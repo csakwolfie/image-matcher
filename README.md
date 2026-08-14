@@ -1,5 +1,9 @@
 # High-Accuracy Image Matcher
 
+[![Tests](https://github.com/csakwolfie/image-matcher/actions/workflows/tests.yml/badge.svg)](https://github.com/csakwolfie/image-matcher/actions/workflows/tests.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
+
 🇬🇧 English | 🇭🇺 [Magyar](README.hu.md)
 
 A classical (non-neural) OpenCV feature-matching image search tool: given a set of
