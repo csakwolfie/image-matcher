@@ -1,0 +1,155 @@
+# =============================================================================
+# High-Accuracy Image Matcher – ALAPÉRTELMEZETT konfiguráció
+# =============================================================================
+# Ez a "gyári alapbeállítás": mindig betöltődik, ha nincs --profile megadva.
+# A profiles/*.yaml fájlok ezen felül CSAK a náluk felsorolt kulcsokat írják
+# felül (nem kell duplikálni mindent egy profilban).
+#
+# Precedencia: explicit CLI kapcsoló > --profile fájl > ez a fájl.
+#
+# FONTOS: ezek az értékek NEM találgatásból származnak, hanem valós
+# near-miss adatok (results_candidates.csv) alapján végzett hibaelemzésből.
+# Ha módosítani szeretnéd őket, először nézd meg a results_candidates.csv-t.
+# =============================================================================
+
+# -----------------------------------------------------------------------
+# Program nyelve (NEM feature-matching finomhangolás – lásd image_matcher/data/lang/)
+# -----------------------------------------------------------------------
+# A --lang kapcsoló nélküli alapértelmezett nyelv. A `--lang <kód>` kapcsoló
+# önmagában (--reference/--source/--output/--list-profiles/--dry-run nélkül)
+# kiadva tartósan ELMENTI az itt szereplő értéket az éppen érvényes
+# config.yaml-ba (lásd README "Nyelv" szakasz).
+default_language: hu
+
+# -----------------------------------------------------------------------
+# Kép-előfeldolgozás (feature-detektálás előtti skálázás + kontraszt)
+# -----------------------------------------------------------------------
+# Maximális hosszabbik oldal a PONTOS (2. köri) feldolgozáshoz, pixelben.
+# Nagyobb érték = több részlet, de több memória/idő. 2048-2560 jó kompromisszum.
+max_process_size: 2200
+
+# Minimális hosszabbik oldal a skálázás után (túl kicsi képeket felskálázzuk).
+min_process_size: 400
+
+# CLAHE (adaptív hisztogram-kiegyenlítés) a feature-detektálás előtt. Sima,
+# alacsony kontrasztú kivágatoknál érdemben javíthatja a kinyerhető
+# feature-ök számát, gyakorlatilag ingyen (néhány ms/kép).
+use_clahe: true
+clahe_clip_limit: 2.0    # nagyobb = erősebb kontraszt-erősítés (túl nagy → zaj-erősítés)
+clahe_tile_size: 8       # a kép ennyi x ennyi csempére osztva, csempénként külön kiegyenlítve
+
+# -----------------------------------------------------------------------
+# Homográfia-plauzibilitás ellenőrzés – védelem "mágnes-képek" (periodikus/
+# repetitív mintázatú, pl. rácsvonalas, perforált képek) ellen, amik
+# véletlenül geometriailag "tiszta", de tartalmilag HIBÁS RANSAC-illesztést
+# kaphatnak (lásd README/projektjegyzetek a konkrét esetről).
+# -----------------------------------------------------------------------
+use_homography_check: true
+max_homography_shear_ratio: 8.0    # a két szinguláris érték aránya (nyírás/anizotrópia)
+min_homography_scale: 0.01         # legkisebb megengedett skálázási tényező
+max_homography_scale: 100.0        # legnagyobb megengedett skálázási tényező
+
+# A DecisionReason "ACCEPT_STRONG_GEOMETRY" vs "ACCEPT_INLIER" megkülönböz-
+# tetésének küszöbe. Csak a naplózást/kategorizálást befolyásolja, az
+# elfogadási döntést magát nem.
+decision_strong_ratio: 0.85
+
+# -----------------------------------------------------------------------
+# Detektor prioritás (sorrend = prioritás). SIFT a legpontosabb klasszikus
+# megoldás scale/rotation/affine esetén.
+# -----------------------------------------------------------------------
+detector_priority: ["SIFT", "AKAZE", "ORB", "BRISK"]
+
+# Detektor paraméterek
+sift_nfeatures: 5000
+sift_contrast: 0.045
+sift_edge: 10
+sift_sigma: 1.6
+
+akaze_threshold: 0.001
+akaze_n_octaves: 4
+akaze_n_layers: 4
+
+orb_nfeatures: 3000
+orb_scale_factor: 1.2
+orb_n_levels: 8
+
+brisk_thresh: 45
+brisk_octaves: 3
+
+# -----------------------------------------------------------------------
+# Matching – SZIGORÚ beállítások, ezekkel korábban 100%-os pontosságot
+# (0 hibás találat) mértünk egy valós teszt-halmazon (lásd profiles/balanced.yaml).
+# -----------------------------------------------------------------------
+ratio_test_sift: 0.60      # Lowe ratio (SIFT/KAZE float)
+ratio_test_bin: 0.65       # Lowe ratio bináris descriptorokhoz (AKAZE/ORB/BRISK)
+
+min_good_matches: 200      # minimum good match a geometriai ellenőrzés előtt
+min_inliers: 220           # minimum RANSAC inlier
+min_inlier_ratio: 0.93     # inlier / good_matches arány
+
+# 2026-08 hibaelemzés (egy valós teszt-futtatás results_candidates.csv-je): a fenti
+# (min_inliers ÉS min_inlier_ratio) kemény ÉS-kapu helyett HÁROM ág
+# bármelyikének teljesülése elfogadáshoz vezet (score_uncertain minden
+# ágban továbbra is kötelező):
+#   A) alap: inliers >= min_inliers ÉS inlier_ratio >= min_inlier_ratio
+#   B) magas inlier_ratio kompenzálja az alacsonyabb abszolút inliers-t
+#   C) sok abszolút inliers kompenzálja az alacsonyabb inlier_ratio-t
+# Az alábbi kezdőértékek konkrét, kézzel igazolt fals negatívokból lettek
+# visszafejtve, de TOVÁBBRA IS HANGOLANDÓK – nem véglegesek. Ismert,
+# dokumentált rés: ezekkel az értékekkel néhány határeset (pl. inliers~260,
+# inlier_ratio~0.90) egyik ág alá sem esik be – ezt results_candidates.csv-vel
+# visszamérve érdemes tovább finomítani, nem találgatással.
+ratio_compensation_bar: 0.94    # (B ág) minimum inlier_ratio
+relaxed_min_inliers: 180        # (B ág) minimum abszolút inliers
+inlier_compensation_bar: 300    # (C ág) minimum abszolút inliers
+relaxed_min_inlier_ratio: 0.85  # (C ág) minimum inlier_ratio
+
+ransac_reproj: 3.0         # pixel
+ransac_max_iters: 3000
+ransac_conf: 0.995
+
+# Többszintű döntési küszöbök (compute_score alapján):
+# score = 0.40 * (good_matches / 50) + 0.60 * inlier_ratio (+ inlier bónusz)
+score_accept: 0.75         # efelett már nem próbálunk gyengébb prioritású detektort
+score_uncertain: 0.97      # efelett fogadjuk csak el biztosan (a tényleges elfogadási küszöb)
+
+# Ha az első detektor (SIFT) már elér ennyit, a többi detektort ki se próbáljuk.
+early_accept_score: 1.00
+
+# -----------------------------------------------------------------------
+# Kétlépcsős keresés – gyors előszűrés kicsi/8-bit cache-elt képeken.
+# -----------------------------------------------------------------------
+# A cache-elt (leskálázott, szürkeárnyalatos JPEG) képek hosszabb oldala.
+# Kisebb = gyorsabb 1. kör, de kevesebb feature a részletszegény referenciáknál.
+cache_long_side: 1600
+cache_jpeg_quality: 92
+
+# 1. kör (jelöltkeresés): csak az első (legnagyobb prioritású) detektorral.
+# FONTOS: stage1_min_good_matches csak egy TECHNIKAI minimum (kell pár pont
+# a RANSAC-hoz) – NEM abszolút kizáró küszöb. Az 1. kör minden forrást
+# pontoz és rangsorol, sosem zár ki egyetlen forrást sem egy magas
+# abszolút küszöb alapján, mert ez korábban valódi találatokat zárt ki a
+# jelöltlistából, mielőtt esélyt kaptak volna a pontos 2. körre.
+stage1_ratio: 0.64
+stage1_min_good_matches: 8
+stage1_top_k: 8
+
+# -----------------------------------------------------------------------
+# Fix 2 (2026-08): tartalék kör kicsi NATÍV felbontású referenciákra – a
+# JELÖLT forrás (nem a referencia) szelektív leskálázásával, hogy a forrás
+# finomrészletei (amikhez a referencián nincs megfelelő) ne dominálják a
+# matchinget. Csak akkor fut, ha a normál (teljes felbontású) 2. kör
+# sikertelen ÉS a referencia natív hosszabb oldala a küszöb alatt van.
+# Ugyanazok a szigorú küszöbök/fenti trade-off ágak döntenek – csak a
+# bemenet változik, nem az elfogadási logika.
+# -----------------------------------------------------------------------
+use_downscale_retry: true
+small_reference_native_threshold: 500   # px, natív hosszabb oldal – ez alatt "kicsi" referenciának számít
+# "váltószám" – 2026-08-12: valós adaton (2 igazolt találat egy másik
+# forrásmappán futtatott teszt-run-ból) kalibrálva 0,7-ről 1,3-ra. Egy 0,3-3,0
+# tartományú sweep mindkét esetnél egy ~1,3 körüli édes pontot mutatott, ahol
+# a jelölt mindkét detektorral átlépi a Fix 1 trade-off ágait (lásd DEVLOG) –
+# se a gyengébb (0,3-0,7), se az erősebb (2,0-3,0) butítás nem volt ilyen jó.
+# Továbbra is bővítendő kalibráció, ha újabb igazolt esetek adódnak.
+downscale_retry_factor: 1.3

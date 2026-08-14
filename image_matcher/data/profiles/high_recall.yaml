@@ -1,0 +1,12 @@
+# "high_recall" profil – lazább küszöbök, ha a cél a minél kevesebb
+# kihagyott (false negative) találat, és elfogadható a nagyobb hibás-
+# találat kockázat. Egy köztes teszt-futtatásban jobb recall-t adott, de
+# ez NEM lett formálisan összevetve a pontossággal a "balanced" profillal
+# szemben – éles használat előtt érdemes results_candidates.csv-vel
+# ellenőrizni a konkrét adathalmazon.
+description: "Lazább küszöbök jobb recall-hoz, nagyobb hibás-találat kockázat mellett."
+
+min_good_matches: 180
+min_inliers: 190
+min_inlier_ratio: 0.90
+score_uncertain: 0.95

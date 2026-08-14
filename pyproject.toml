@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "image-matcher"
+dynamic = ["version"]
+description = "High-Accuracy Classical OpenCV Image Matcher – kétlépcsős (SIFT/AKAZE/ORB/BRISK + RANSAC) feature-matching alapú képkereső."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "csakwolfie" },
+]
+dependencies = [
+    "opencv-contrib-python>=4.8",
+    "numpy>=1.24",
+    "Pillow>=10.0",
+    "PyYAML>=6.0",
+]
+
+[project.scripts]
+image-matcher = "image_matcher.main:main"
+image-matcher-gui = "image_matcher.gui.app:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "image_matcher.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["image_matcher*"]
+
+[tool.setuptools.package-data]
+image_matcher = ["data/config.yaml", "data/profiles/*.yaml", "data/lang/*.json"]

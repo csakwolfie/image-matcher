@@ -1,0 +1,25 @@
+# Futtatási kimenetek (valós felhasználói adatot tartalmazhatnak - sose kerüljön verziókezelésbe)
+runs/
+cache/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Ez a projekt session-specifikus tooling-mappája
+.claude/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

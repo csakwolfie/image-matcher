@@ -1,0 +1,21 @@
+# "balanced" profil – az alapértelmezett választás jellegű profil.
+#
+# A jelenlegi SZIGORÚ küszöbök, amikkel egy valós teszt-halmazon 100%-os
+# pontosságot (0 hibás találat) mértünk. Mivel ezek az értékek megegyeznek
+# a config.yaml gyári alapértékeivel, ez a profil elviekben nem módosít
+# semmit – explicit módon kiírva, hogy a --profile balanced néven mindig
+# egyértelműen elérhető és dokumentált legyen, akkor is, ha a config.yaml
+# alapértékei később megváltoznának.
+description: "Szigorú küszöbök, 0 hibás találat egy valós teszt-halmazon (a config.yaml gyári alapértékei)."
+
+min_good_matches: 200
+min_inliers: 220
+min_inlier_ratio: 0.93
+score_uncertain: 0.97
+
+# A trade-off ágak (Fix 1, 2026-08) kezdőértékei is explicit kiírva, ugyanazon
+# okból, mint fent.
+ratio_compensation_bar: 0.94
+relaxed_min_inliers: 180
+inlier_compensation_bar: 300
+relaxed_min_inlier_ratio: 0.85

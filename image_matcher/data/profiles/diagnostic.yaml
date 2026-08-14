@@ -1,0 +1,23 @@
+# "diagnostic" profil – NEM éles használatra. Nagyon laza küszöbök, hogy a
+# program szinte mindent "közel-találatként" jelezzen ki, és a score_accept /
+# early_accept_score küszöböket elérhetetlenül magasra állítjuk, hogy a
+# 2. kör MINDIG az összes elérhető detektort végigpróbálja egy jelöltre
+# (soha ne álljon le korán) – ez adja a lehető legrészletesebb
+# results_candidates.csv naplót a finomhangoláshoz.
+description: "Nagyon laza küszöbök + soha nincs early-accept, kifejezetten küszöb-finomhangoláshoz."
+
+min_good_matches: 20
+min_inliers: 10
+min_inlier_ratio: 0.50
+score_uncertain: 0.30
+
+# Az 1. köri technikai minimum (alapból 8) is le van véve majdnem semmire –
+# enélkül a "nincs jelölt" esetek (senki sem éri el a 8 good-matches
+# küszöböt sem) diagnosztikailag láthatatlanok maradnának ezzel a
+# profillal is, hiszen az csak a 2. köri küszöböket lazítja.
+stage1_min_good_matches: 1
+
+# Elérhetetlenül magas érték → a 2. kör sosem áll le korán, minden
+# prioritási sorrendben elérhető detektor mindig lefut minden jelöltre.
+score_accept: 999.0
+early_accept_score: 999.0
