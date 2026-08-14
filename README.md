@@ -1,73 +1,80 @@
 # High-Accuracy Image Matcher
 
-🇭🇺 Magyar | 🇬🇧 [English](README.en.md)
+🇬🇧 English | 🇭🇺 [Magyar](README.hu.md)
 
-Klasszikus (nem neurális) OpenCV feature-matching alapú képkereső: adott **referencia**
-(körbevágott) képekhez megkeresi a hozzájuk tartozó **eredeti, teljes** képet egy nagy
-forrásmappában. SIFT / AKAZE / ORB / BRISK detektorokat és RANSAC-homográfiát használ,
-kétlépcsős (gyors előszűrés + pontos ellenőrzés) stratégiával, hogy nagy (több ezer
-képes) forráskészleteken is kezelhető idő alatt fusson.
+A classical (non-neural) OpenCV feature-matching image search tool: given a set of
+**reference** (cropped) images, it finds the corresponding **original, full** image in
+a large source folder. It uses SIFT / AKAZE / ORB / BRISK detectors and RANSAC
+homography, with a two-stage (fast pre-filter + precise verification) strategy so it
+stays practical even on large (multi-thousand image) source sets.
 
-> Verzió: **1.0.0**. A fejlesztés részletes története a [DEVLOG.md](DEVLOG.md)-ben.
-> Ingyenes, MIT licenc alatt ([LICENSE](LICENSE)) — szabadon használható, módosítható,
-> terjeszthető, kereskedelmi célra is.
+> Version: **1.0.0**. Full development history in [DEVLOG.md](DEVLOG.md) (Hungarian
+> only — see note below). Free and open source under the MIT license
+> ([LICENSE](LICENSE)) — use, modify, and redistribute freely, including for
+> commercial purposes.
+
+> **Note on language**: this README is bilingual, and as of the `--lang` switch (see
+> [Language](#language)) the CLI/console output and GUI are too — pass `--lang en` (or
+> set it as the default) for English output. Code comments and the development log
+> (`DEVLOG.md`) remain **Hungarian-only**.
 
 ---
 
-## Tartalom
+## Contents
 
-- [Hogyan működik](#hogyan-működik)
-- [Telepítés](#telepítés)
-- [Gyors kezdés](#gyors-kezdés)
+- [How it works](#how-it-works)
+- [Installation](#installation)
+- [Quick start](#quick-start)
 - [GUI](#gui)
-- [Mappastruktúra](#mappastruktúra)
-- [Architektúra / modulok](#architektúra--modulok)
-- [CLI paraméterek](#cli-paraméterek)
-- [Konfiguráció: config.yaml és profilok](#konfiguráció-configyaml-és-profilok)
-- [Kimenetek](#kimenetek)
-- [Cache-rendszer](#cache-rendszer)
-- [Tesztelés](#tesztelés)
-- [Hibaelhárítás](#hibaelhárítás)
-- [Licenc](#licenc)
+- [Directory structure](#directory-structure)
+- [Architecture / modules](#architecture--modules)
+- [CLI parameters](#cli-parameters)
+- [Configuration: config.yaml and profiles](#configuration-configyaml-and-profiles)
+- [Outputs](#outputs)
+- [Cache system](#cache-system)
+- [Testing](#testing)
+- [Troubleshooting](#troubleshooting)
+- [License](#license)
 
 ---
 
-## Hogyan működik
+## How it works
 
-**Kétlépcsős keresés:**
+**Two-stage search:**
 
-1. **Előfeldolgozás** — minden kép (referencia + forrás) leskálázva egy közepes
-   méretre (`cache_long_side`, alapból 1600px), szürkeárnyalatos, 8-bit JPEG-ként
-   cache-elve. Inkrementális: csak az új képeket dolgozza fel újra.
-2. **1. kör (gyors jelöltkeresés)** — a kis cache-képeken, **csak** az első
-   (legnagyobb prioritású, alapból SIFT) detektorral, **minden** forrást pontoz
-   (nincs kizáró abszolút küszöb, csak egy technikai minimum), és a legjobb `top_k`
-   (alapból 8) jelöltet viszi tovább.
-3. **2. kör (pontos döntés)** — a jelölteket az **eredeti, teljes felbontású**
-   fájlokból tölti be újra, és mind a 4 detektorral (prioritási sorrendben,
-   early-accept-tel) szigorú küszöbökkel dönt.
-4. **Találat esetén** a forrásfájl a `found/` mappába kerül, a referencia
-   fájlnevét kapva (a forrás saját kiterjesztésével).
+1. **Preprocessing** — every image (reference + source) is downscaled to a medium
+   size (`cache_long_side`, 1600px by default), converted to grayscale, and cached as
+   an 8-bit JPEG. Incremental: only new images get processed on subsequent runs.
+2. **Stage 1 (fast candidate search)** — on the small cached images, using **only**
+   the first (highest-priority, SIFT by default) detector, it scores **every** source
+   (no exclusionary absolute threshold, just a technical minimum), and carries the
+   best `top_k` (8 by default) candidates forward.
+3. **Stage 2 (precise decision)** — the candidates are reloaded from the **original,
+   full-resolution** files, and evaluated with all 4 detectors (in priority order,
+   with early-accept) against strict thresholds.
+4. **On a match**, the source file is copied into the `found/` folder under the
+   reference's filename (keeping the source's own extension).
 
-**Miért két kör?** Egy nagy forráskészletet minden detektorral, teljes felbontáson
-összehasonlítani minden referenciával kezelhetetlenül lassú lenne. A gyors 1. kör (kis
-kép, 1 detektor) szűkíti a jelölteket egy kis listára, amin aztán a drága, pontos
-2. kör fut.
+**Why two stages?** Comparing a large source set against every reference with every
+detector at full resolution would be unmanageably slow. The fast stage 1 (small
+images, 1 detector) narrows the candidates down to a short list, which the expensive,
+precise stage 2 then runs on.
 
-**Miért nincs kizáró küszöb az 1. körben?** Egy korábbi verzióban volt egy magasabb
-technikai minimum, ami valódi találatokat zárt ki a jelöltlistából, mielőtt azok esélyt
-kaptak volna a pontos 2. körre — ez volt az egyik legnagyobb hibaforrás a projekt
-történetében. Az 1. kör ezért csak **rangsorol**, sosem zár ki abszolút küszöb alapján;
-a tényleges döntést mindig a 2. kör hozza meg.
+**Why is there no exclusionary threshold in stage 1?** An earlier version had a higher
+technical minimum there, which excluded genuine matches from the candidate list before
+they ever got a chance at the precise stage 2 — this was one of the biggest sources of
+error in the project's history. Stage 1 therefore only **ranks**, never excludes based
+on an absolute threshold; the actual decision is always made by stage 2.
 
-**Homográfia-plauzibilitás ellenőrzés** — védelem "mágnes-képek" (periodikus/repetitív
-mintázatú, pl. rácsvonalas, perforált forrásképek) ellen, amik véletlenül geometriailag
-"tisztának tűnő", de tartalmilag hibás RANSAC-illesztést kaphatnak. Egy valódi
-fotó-kivágat/forrás párnál a becsült homográfia affin része (forgatás+skálázás+enyhe
-nyírás) ésszerű tartományban van; egy degenerált illesztés (tükrözés, extrém nyírás,
-irreális skálázás) erős jele a hamis geometriai egyezésnek — ezt a szűrő elutasítja.
+**Homography plausibility check** — protection against "magnet images" (source images
+with a periodic/repetitive pattern, e.g. grid lines, perforations) that can
+accidentally receive a geometrically "clean-looking" but content-wise incorrect RANSAC
+fit. For a genuine photo-crop/source pair, the affine part of the estimated homography
+(rotation + scale + mild shear) falls within a sane range; a degenerate fit (mirroring,
+extreme shear, unrealistic scaling) is a strong sign of a false geometric match — this
+filter rejects those.
 
-**Konzol-kimenet** — minden referencia egy rövid blokkot kap:
+**Console output** — every reference gets a short block:
 
 ```
 [021/363] img-020.jpg  ✓ FOUND
@@ -80,70 +87,71 @@ irreális skálázás) erős jele a hamis geometriai egyezésnek — ezt a szűr
   reason: inlier_ratio 0.436 < MIN_INLIER_RATIO 0.93
 ```
 
-`✓ EXISTS` (már megvolt), `✓ FOUND` (találat), `~ NEAR MISS` (volt
-geometriailag plauzibilis jelölt, csak a küszöb alatt maradt —
-`REJECT_INLIER_RATIO`/`REJECT_SCORE`), `✗ NOT FOUND` (minden más elutasítási
-ok). Alul egy folyamatosan frissülő állapotsor mutatja az összképet:
+`✓ EXISTS` (already in `found/`), `✓ FOUND` (match), `~ NEAR MISS` (a
+geometrically plausible candidate existed, it just fell short of the
+threshold — `REJECT_INLIER_RATIO`/`REJECT_SCORE`), `✗ NOT FOUND` (every
+other rejection reason). A continuously updating status bar at the bottom
+shows the overall picture:
 
 ```
 Progress: 19/363 (5.2%) | 00:14 elapsed | ETA 04:44 | FOUND 12 | NOT FOUND 7
 ```
 
-(Az állapotsor csak valódi terminálban jelenik meg — átirányított/pipe-olt
-kimenetnél automatikusan kikapcsol. A naplófájlba mindig a blokk-üzenetek
-kerülnek, az állapotsor nem.)
+(The status bar only appears in a real terminal — it automatically disables
+itself when output is redirected/piped. The log file always receives the
+block messages; never the status bar.)
 
 ---
 
-## Telepítés
+## Installation
 
-Python 3.10+ (fejlesztve 3.14-en). Két lehetőség:
+Python 3.10+ (developed on 3.14). Two options:
 
-**1. Csomagként telepítve** (ajánlott — ekkor egy valódi `image-matcher`
-parancs is elérhető lesz a `python run.py` mellett):
+**1. Installed as a package** (recommended — this also gives you a real
+`image-matcher` command alongside `python run.py`):
 
 ```bash
-git clone <repó-URL>
+git clone <repo-URL>
 cd image-search
 pip install -e .
 ```
 
-**2. Csak a függőségek, forrásból futtatva:**
+**2. Just the dependencies, running from source:**
 
 ```bash
 pip install -r requirements.txt
 ```
 
-> Az AKAZE és BRISK detektorokhoz teljes `opencv-contrib-python` build szükséges — ez
-> már a projekt alapértelmezett függősége (nem a szűkebb `opencv-python`). Ha mégis
-> hiányoznak, a program figyelmeztetéssel jelzi, és a maradék elérhető detektorokkal
-> fut tovább (lásd [Hibaelhárítás](#hibaelhárítás)).
+> AKAZE and BRISK detectors require a full `opencv-contrib-python` build — this is
+> already the project's default dependency (not the narrower `opencv-python`). If they
+> are still missing on your system, the tool reports it with a warning and continues
+> with whichever detectors are available (see [Troubleshooting](#troubleshooting)).
 
 ---
 
-## Gyors kezdés
+## Quick start
 
 ```bash
-python run.py --reference "D:\referencia-kepek" --source "E:\forras-kepek" --output "runs\2026-08-11"
+python run.py --reference "D:\reference-images" --source "E:\source-images" --output "runs\2026-08-11"
 ```
 
-(Csomagként telepítve ugyanez `image-matcher --reference ... --source ... --output ...`
-formában is elérhető, `python run.py` nélkül.)
+(If installed as a package, the same works as
+`image-matcher --reference ... --source ... --output ...`, without `python run.py`.)
 
-Csak validálás, keresés nélkül (gyors ellenőrzés, mielőtt egy több órás futást
-indítanál):
+Validation only, no search (a quick sanity check before starting a run that might take
+hours):
 
 ```bash
-python run.py -r "D:\referencia-kepek" -s "E:\forras-kepek" -o "runs\teszt" --dry-run
+python run.py -r "D:\reference-images" -s "E:\source-images" -o "runs\test" --dry-run
 ```
 
-Egy másik profillal, korlátozott referencia-számmal (gyors teszteléshez):
+With a different profile and a limited number of references (for quick testing):
 
 ```bash
-python run.py -r ref_mappa -s src_mappa -o out --profile high_recall --limit 20
+python run.py -r ref_dir -s src_dir -o out --profile high_recall --limit 20
 ```
 
-Elérhető profilok listázása:
+List available profiles:
 
 ```bash
 python run.py --list-profiles
@@ -153,356 +161,355 @@ python run.py --list-profiles
 
 ## GUI
 
-A CLI-kapcsolók (nyelv, profil, útvonalak, `--limit`/`--workers`/`--top-k`,
-`--no-cache`/`--rebuild-cache`/`--dry-run`) egy Tkinter grafikus felületen
-is elérhetők — nincs hozzá extra függőség (a Tkinter a Python
-standard library része). Indítás:
+The CLI flags (language, profile, paths, `--limit`/`--workers`/`--top-k`,
+`--no-cache`/`--rebuild-cache`/`--dry-run`) are also available through a
+Tkinter GUI — no extra dependency needed (Tkinter ships with the Python
+standard library). Launch it with:
 
 ```bash
 python run_gui.py
-# vagy
+# or
 python -m image_matcher.gui
-# csomagként telepítve:
+# if installed as a package:
 image-matcher-gui
 ```
 
-A Futtatás gomb mellett Szünet/Folytatás és Leállítás gomb is elérhető —
-ezek a KÖVETKEZŐ referencia feldolgozása előtt lépnek életbe (egy már
-folyamatban lévő, egyetlen referencián futó 2-köri keresést nem lehet
-félbeszakítani, csak a referenciák közötti pontokon), megszakításnál/
-szünetnél az addig összegyűjtött részleges eredmény is elmentődik a
-`results.csv`/`results_candidates.csv`-be. A nyelv-legördülő melletti
-"Legyen alapértelmezett" gomb ugyanazt csinálja, mint a `--lang <kód>`
-CLI-kapcsoló önmagában kiadva (lásd [Nyelv](#nyelv)).
+Besides Run, there are Pause/Resume and Stop buttons — they take effect
+before the NEXT reference starts (a single reference's own two-stage
+search can't be interrupted mid-flight, only between references). On
+pause/cancel, whatever partial results were gathered so far are still
+saved to `results.csv`/`results_candidates.csv`. The "Make default" button
+next to the language dropdown does the same thing as passing `--lang
+<code>` on its own from the CLI (see [Language](#language)).
 
-> Néhány Linux disztribúción a Tkinter nem alapból települ a Python
-> mellé — ott előtte telepítsd az OS-csomagot (pl. Debian/Ubuntu:
+> On some Linux distributions Tkinter isn't installed alongside Python by
+> default — install the OS package first (e.g. on Debian/Ubuntu:
 > `sudo apt install python3-tk`).
 
 ---
 
-## Mappastruktúra
+## Directory structure
 
 ```
 image-search/
-  run.py                    ← belépési pont (forrásból futtatáshoz, CLI)
-  run_gui.py                 ← belépési pont a Tkinter GUI-hoz
-  pyproject.toml            ← csomag-metaadatok, függőségek, "image-matcher"/"image-matcher-gui" parancsok
-  LICENSE                    ← MIT licenc
-  image_matcher/              ← a program forráskódja (lásd lejjebb)
+  run.py                    ← entry point (for running from source, CLI)
+  run_gui.py                 ← entry point for the Tkinter GUI
+  pyproject.toml            ← package metadata, dependencies, "image-matcher"/"image-matcher-gui" commands
+  LICENSE                    ← MIT license
+  image_matcher/              ← the program's source code (see below)
     gui/                        ← Tkinter GUI (app.py, worker.py, argv_builder.py)
     data/
-      config.yaml               ← gyári alapértékek (finomhangolási konstansok)
+      config.yaml               ← factory defaults (tunable constants)
       profiles/
-        balanced.yaml             ← szigorú küszöbök (alapértelmezett választás)
-        high_recall.yaml           ← lazább küszöbök, jobb recall
-        diagnostic.yaml             ← nagyon laza, soha nincs early-accept (finomhangoláshoz)
+        balanced.yaml             ← strict thresholds (default choice)
+        high_recall.yaml           ← looser thresholds, better recall
+        diagnostic.yaml             ← very loose, never early-accepts (for tuning)
       lang/
-        hu.lang.json                ← a program összes felhasználó felé megjelenő szövege, magyarul
-        en.lang.json                 ← ugyanaz, angolul
-  tests/                      ← unittest smoke/integrációs tesztek
+        hu.lang.json                ← every user-facing string in the program, in Hungarian
+        en.lang.json                 ← the same, in English
+  tests/                      ← unittest smoke/integration tests
 ```
 
-A `config.yaml`/`profiles/` a csomagba ágyazott gyári alapértékek — nem kell
-közvetlenül szerkeszteni őket. Saját felülírás létrehozásához helyezz egy
-`config.yaml`-t és/vagy `profiles/` mappát a **futtatás munkakönyvtárába**
-(elsőbbséget élvez), vagy a `~/.image_matcher/` mappába (felhasználói szintű,
-munkakönyvtártól független felülírás). Lásd
-[Konfiguráció](#konfiguráció-configyaml-és-profilok).
+`config.yaml`/`profiles/` are the factory defaults bundled with the package — you
+shouldn't need to edit them directly. To create your own override, place a
+`config.yaml` and/or `profiles/` directory in your **run's working directory** (takes
+priority), or in `~/.image_matcher/` (a user-level override, independent of the
+working directory). See [Configuration](#configuration-configyaml-and-profiles).
 
-A `lang/` mappa a program összes konzol-/hiba-/súgó-szövegét tartalmazza
-kulcs→szöveg JSON-fájlokban (`<nyelvkód>.lang.json`), ugyanazzal a
-felfedezési precedenciával, mint a `config.yaml`/`profiles/`. A nyelvet a
-[`--lang` kapcsoló](#nyelv) választja ki (alapértelmezett: `hu`); új nyelv
-hozzáadásához elég egy új `<kód>.lang.json` fájlt elhelyezni itt (vagy a
-`~/.image_matcher/lang/`/munkakönyvtár-beli felülírásban) — kódmódosítás
-nem kell hozzá.
+The `lang/` directory holds all of the program's console/error/help text as
+key→string JSON files (`<lang-code>.lang.json`), discovered with the same
+precedence as `config.yaml`/`profiles/`. The [`--lang` switch](#language)
+picks which one is active (default: `hu`); adding a new language just means
+dropping a new `<code>.lang.json` file here (or in the
+`~/.image_matcher/lang/`/working-directory override) — no code changes
+needed.
 
-Egy futtatás után a **kimeneti mappa** (`--output DIR`) tartalma:
+After a run, the **output directory** (`--output DIR`) contains:
 
 ```
 <output>/
-  found/                     ← a megtalált, átnevezett forrásfájlok
-  results.csv                ← referenciánkénti összegzés
-  results_candidates.csv     ← jelölt×detektor-szintű részletes napló
-  log_20260811_225412.txt    ← teljes konzol-kimenet időbélyeggel
-  cache/                     ← kép- és descriptor-cache (ha nincs --no-cache)
+  found/                     ← the matched, renamed source files
+  results.csv                ← per-reference summary
+  results_candidates.csv     ← detailed candidate×detector log
+  log_20260811_225412.txt    ← full console output, timestamped
+  cache/                     ← image + descriptor cache (unless --no-cache)
 ```
 
 ---
 
-## Architektúra / modulok
+## Architecture / modules
 
-| Modul | Felelősség |
+| Module | Responsibility |
 |---|---|
-| `image_matcher/config.py` | `config.yaml` + `profiles/*.yaml` betöltése, precedencia-feloldás (`Config` — immutable dataclass) |
-| `image_matcher/image_io.py` | Unicode-biztos képbetöltés Windows-on, skálázás, CLAHE |
-| `image_matcher/detectors.py` | Detektor-gyár (SIFT/AKAZE/ORB/BRISK/KAZE) + szálankénti (thread-local) detector-példányok |
-| `image_matcher/cache_disk.py` | `DescriptorCache` — memóriában és opcionálisan lemezen (perzisztensen) tárolt feature-descriptorok, fingerprint-alapú invalidációval |
-| `image_matcher/preprocessing.py` | A kis, 8-bit JPEG cache inkrementális felépítése (1. körhöz) |
-| `image_matcher/matching.py` | Descriptor matching, RANSAC geometriai ellenőrzés, homográfia-plauzibilitás, score-számítás, DecisionReason kategorizálás |
-| `image_matcher/search.py` | 1. kör (`stage1_rank_candidates`) és 2. kör (`find_best_match_for_reference`) |
-| `image_matcher/reporting.py` | `results.csv` és `results_candidates.csv` írása |
-| `image_matcher/cli.py` | Parancssori felület (csoportosított `argparse`) |
-| `image_matcher/main.py` | A teljes folyamat összefűzése (orchestráció) |
+| `image_matcher/config.py` | Loading `config.yaml` + `profiles/*.yaml`, precedence resolution (`Config` — immutable dataclass) |
+| `image_matcher/image_io.py` | Unicode-safe image loading on Windows, scaling, CLAHE |
+| `image_matcher/detectors.py` | Detector factory (SIFT/AKAZE/ORB/BRISK/KAZE) + per-thread (thread-local) detector instances |
+| `image_matcher/cache_disk.py` | `DescriptorCache` — in-memory and optionally persistent on-disk feature descriptors, with fingerprint-based invalidation |
+| `image_matcher/preprocessing.py` | Incremental build of the small, 8-bit JPEG cache (for stage 1) |
+| `image_matcher/matching.py` | Descriptor matching, RANSAC geometric verification, homography plausibility, score computation, DecisionReason categorization |
+| `image_matcher/search.py` | Stage 1 (`stage1_rank_candidates`) and stage 2 (`find_best_match_for_reference`) |
+| `image_matcher/reporting.py` | Writing `results.csv` and `results_candidates.csv` |
+| `image_matcher/cli.py` | Command-line interface (grouped `argparse`) |
+| `image_matcher/main.py` | Orchestration — wiring the whole pipeline together |
 
-Minden függvény explicit `Config`-példányt kap paraméterként (nincs mutálható
-globális állapot) — egy futtatás beállításai a futtatás elejétől a végéig
-garantáltan konzisztensek.
+Every function receives an explicit `Config` instance as a parameter (no mutable
+global state) — a run's settings are guaranteed to stay consistent from start to
+finish.
 
 ---
 
-## CLI paraméterek
+## CLI parameters
 
 ```
-python run.py [kapcsolók...]
+python run.py [options...]
 ```
 
-### Nyelv
+### Language
 
-| Kapcsoló | Leírás |
+| Option | Description |
 |---|---|
-| `--lang NYELV` | A program nyelve — jelenleg `hu` és `en`. A `--help` szövegek is a választott nyelven jelennek meg (a nyelv már a súgó felépítése előtt eldől). Ismeretlen nyelvnél a program hibaüzenettel (elérhető nyelvek felsorolásával) kilép. Új nyelv hozzáadása csak egy új `<kód>.lang.json` fájlt igényel a `data/lang/` mappában (lásd [Konfiguráció](#konfiguráció-configyaml-és-profilok)) — kódmódosítás nélkül. |
+| `--lang LANG` | The program's language — currently `hu` and `en`. `--help` text is also shown in the chosen language (the language is resolved before the help parser is even built). An unknown language makes the program exit with an error listing the available ones. Adding a new language only needs a new `<code>.lang.json` file under `data/lang/` (see [Configuration](#configuration-configyaml-and-profiles)) — no code changes. |
 
-**Alapértelmezett nyelv beállítása:** ha a `--lang NYELV`-et **önmagában**
-(más kapcsoló nélkül) adod ki, a program NEM próbál keresést futtatni,
-hanem tartósan elmenti a megadott nyelvet a `config.yaml`
-`default_language` kulcsába, és attól kezdve minden `--lang` nélküli
-futtatás ezt használja:
+**Setting the default language:** passing `--lang LANG` **on its own**
+(with no other flag) doesn't attempt a search — instead it permanently
+saves the given language to `config.yaml`'s `default_language` key, and
+every `--lang`-less run from then on uses it:
 
 ```
 python run.py --lang en
 # 'en' is now the default language, saved to: ...\.image_matcher\config.yaml
 ```
 
-Ha még nincs saját `config.yaml`-felülírásod (sem a munkakönyvtáradban,
-sem a `~/.image_matcher/` mappában), ez a művelet létrehoz egyet a
-`~/.image_matcher/config.yaml` helyen — a gyári alapértékek TELJES
-másolataként, csak a `default_language` kulccsal felülírva (a
-finomhangolási beállítások innentől ebből a fájlból töltődnek be, nem
-automatikusan a csomag frissítéseiből — lásd [Konfiguráció](#konfiguráció-configyaml-és-profilok)).
-Ha már van felülírásod (cwd vagy felhasználói szintű), azt frissíti
-helyben, a többi beállításod megtartásával. Egy `--reference`/`--source`/
-`--output`/`--list-profiles`/`--dry-run` melletti `--lang` csak az adott
-futtatásra vonatkozik, NEM módosítja a tartós alapértelmezettet.
+If you don't have your own `config.yaml` override yet (neither in your
+working directory nor in `~/.image_matcher/`), this creates one at
+`~/.image_matcher/config.yaml` — a FULL copy of the factory defaults with
+just `default_language` overridden (from then on, tuning settings load
+from this file, not automatically from package updates — see
+[Configuration](#configuration-configyaml-and-profiles)). If you already
+have an override (working-directory or user-level), it's updated in
+place, keeping your other settings. A `--lang` alongside `--reference`/
+`--source`/`--output`/`--list-profiles`/`--dry-run` only applies to that
+run — it does NOT change the persistent default.
 
-### Profilkezelés
+### Profile management
 
-| Kapcsoló | Leírás |
+| Option | Description |
 |---|---|
-| `--profile NÉV` | Névvel ellátott profil betöltése a `profiles/` mappából (pl. `--profile diagnostic`). Ha nincs megadva, csak a `config.yaml` alapértékei érvényesek. |
+| `--profile NAME` | Load a named profile from `profiles/` (e.g. `--profile diagnostic`). If omitted, only `config.yaml`'s defaults apply. |
 
-### Útvonalak
+### Paths
 
-| Kapcsoló | Leírás |
+| Option | Description |
 |---|---|
-| `--reference DIR`, `-r` | Referencia (körbevágott) képek mappája. **Kötelező.** |
-| `--source DIR`, `-s` | Eredeti, teljes képek mappája, ahol a referenciákat keressük. **Kötelező.** |
-| `--output DIR`, `-o` | Kimeneti mappa (lásd [Mappastruktúra](#mappastruktúra)). **Kötelező.** |
+| `--reference DIR`, `-r` | Directory of reference (cropped) images. **Required.** |
+| `--source DIR`, `-s` | Directory of original, full images to search within. **Required.** |
+| `--output DIR`, `-o` | Output directory (see [Directory structure](#directory-structure)). **Required.** |
 
-### Futtatásvezérlés
+### Run control
 
-| Kapcsoló | Leírás |
+| Option | Description |
 |---|---|
-| `--limit N` | Csak az első N referenciát dolgozza fel (ábécésorrendben) — gyors teszteléshez. |
-| `--workers N`, `-w` | Párhuzamos szálak száma. Alapból a CPU-magok száma. Javasolt érték: a fizikai magok száma — több szál csak felesleges hőt/throttlingot okoz. |
-| `--top-k N` | Hány jelölt megy tovább az 1. körből a 2. körbe. Alapérték: a `config.yaml`/profil `stage1_top_k` értéke (8). Javasolt: 6–10. |
+| `--limit N` | Only process the first N references (alphabetically) — for quick testing. |
+| `--workers N`, `-w` | Number of parallel threads. Defaults to CPU core count. Recommended: physical core count — more threads just cause unnecessary heat/throttling. |
+| `--top-k N` | How many candidates go from stage 1 to stage 2. Default: the `config.yaml`/profile `stage1_top_k` value (8). Recommended: 6–10. |
 
 ### Cache
 
-| Kapcsoló | Leírás |
+| Option | Description |
 |---|---|
-| `--cache DIR` | A cache mappa helye. Alapból `<output>/cache`. |
-| `--no-cache` | Teljesen kikapcsolja a cache-elést (se kép-, se descriptor-cache) — minden újraszámolódik minden futtatásnál. Lassabb, de a futás után nem marad cache-mappa a lemezen. |
-| `--rebuild-cache` | A meglévő cache-tartalmat figyelmen kívül hagyja és felülírja (kényszerített újragenerálás), utána továbbra is ír cache-t. |
+| `--cache DIR` | Location of the cache directory. Defaults to `<output>/cache`. |
+| `--no-cache` | Disables caching entirely (neither image nor descriptor cache) — everything is recomputed on every run. Slower, but no cache directory remains on disk afterward. |
+| `--rebuild-cache` | Ignores and overwrites existing cache contents (forced regeneration), then continues writing cache as normal. |
 
-### Futtatás
+### Execution
 
-| Kapcsoló | Leírás |
+| Option | Description |
 |---|---|
-| `--dry-run` | Validálja az útvonalakat és a feloldott (CLI+profil+config.yaml utáni) beállításokat, megszámolja a feldolgozandó képeket — de nem futtat tényleges keresést, nem ír `found/`-ot, CSV-t vagy cache-t. |
-| `--version` | Kiírja a program verzióját, és kilép. |
-| `--list-profiles` | Felsorolja a `profiles/` mappában elérhető profilokat (egysoros leírással), és kilép. |
+| `--dry-run` | Validates paths and the resolved (CLI+profile+config.yaml) settings, counts the images to be processed — but doesn't run an actual search, and doesn't write `found/`, CSVs, or cache. |
+| `--version` | Prints the program version and exits. |
+| `--list-profiles` | Lists the profiles available in `profiles/` (with their one-line descriptions) and exits. |
 
-### Precedencia
+### Precedence
 
-**Explicit CLI kapcsoló > `--profile` fájl > `config.yaml` alapérték.**
+**Explicit CLI flag > `--profile` file > `config.yaml` default.**
 
-Vagyis: ha egy érték a `config.yaml`-ban van, a kiválasztott profil felülírhatja,
-egy explicit CLI kapcsoló (ahol van ilyen — jelenleg csak a `--top-k`) pedig
-mindkettőt felülírja.
+In other words: if a value lives in `config.yaml`, the selected profile can override
+it, and an explicit CLI flag (where one exists — currently only `--top-k`) overrides
+both.
 
 ---
 
-## Konfiguráció: config.yaml és profilok
+## Configuration: config.yaml and profiles
 
-A finomhangolási konstansok (küszöbök, detektor-paraméterek, CLAHE,
-homográfia-ellenőrzés, cache-méret, top-k stb.) a
-**[image_matcher/data/config.yaml](image_matcher/data/config.yaml)**-ban élnek,
-kommentekkel/leírással ellátva — ez a gyári alapbeállítás, ami mindig betöltődik,
-ha nincs felülírva. Ezeket az értékeket **valós near-miss adatok (hibaelemzés)
-alapján** hangoltuk, nem találgatással — módosítás előtt érdemes megnézni a
-`results_candidates.csv`-t.
+The tunable constants (thresholds, detector parameters, CLAHE, homography check,
+cache size, top-k, etc.) live in
+**[image_matcher/data/config.yaml](image_matcher/data/config.yaml)**, with
+comments/descriptions — this is the factory default, always loaded unless overridden.
+These values were tuned from **real near-miss data (failure analysis)**, not guessed —
+before changing them, it's worth looking at `results_candidates.csv`.
 
-### Hol keresi a config.yaml-t és a profiles/-t
+### Where config.yaml and profiles/ are looked up
 
-Precedencia (az első találat nyer):
+Precedence (first match wins):
 
-1. `./config.yaml` / `./profiles/` a **jelenlegi munkakönyvtárban** — ha ide
-   teszel egy saját `config.yaml`-t/`profiles/` mappát, azt használja a
-   csomagba ágyazott gyári alapértékek helyett.
-2. `~/.image_matcher/config.yaml` / `~/.image_matcher/profiles/` —
-   felhasználói szintű felülírás, munkakönyvtártól függetlenül mindig aktív.
-3. A csomagba ágyazott gyári alapértékek (`image_matcher/data/`) — ez mindig
-   létezik, végső biztonsági háló, telepített csomagnál is működik.
+1. `./config.yaml` / `./profiles/` in the **current working directory** — if you place
+   your own `config.yaml`/`profiles/` directory here, it's used instead of the bundled
+   factory defaults.
+2. `~/.image_matcher/config.yaml` / `~/.image_matcher/profiles/` — a user-level
+   override, always active regardless of working directory.
+3. The factory defaults bundled with the package (`image_matcher/data/`) — this always
+   exists, the final safety net, and works even for an installed package.
 
-### Legfontosabb kulcsok
+### Key settings
 
-| Kulcs | Alapérték | Jelentés |
+| Key | Default | Meaning |
 |---|---|---|
-| `min_good_matches` | 200 | Minimum "good" match a geometriai ellenőrzés (RANSAC) előtt |
-| `min_inliers` | 220 | Minimum RANSAC inlier a végső elfogadáshoz |
-| `min_inlier_ratio` | 0.93 | Inlier / good-match arány minimuma |
-| `score_uncertain` | 0.97 | A tényleges elfogadási score-küszöb |
-| `score_accept` | 0.75 | E felett nem próbálunk gyengébb prioritású detektort |
-| `early_accept_score` | 1.00 | E felett (sikeres találatnál) a többi detektort ki se próbáljuk |
-| `ratio_test_sift` / `ratio_test_bin` | 0.60 / 0.65 | Lowe ratio test küszöb (float ill. bináris descriptoroknál) |
-| `cache_long_side` | 1600 | Az 1. köri (gyors) cache-képek hosszabb oldala pixelben |
-| `stage1_top_k` | 8 | Hány jelölt megy az 1. körből a 2. körbe |
-| `stage1_min_good_matches` | 8 | **Csak technikai minimum** az 1. körben — NEM kizáró küszöb |
-| `use_clahe` | true | Adaptív kontraszt-kiegyenlítés a feature-detektálás előtt |
-| `use_homography_check` | true | "Mágnes-kép" védelem (lásd fent) |
-| `detector_priority` | `[SIFT, AKAZE, ORB, BRISK]` | A 2. kör detektor-sorrendje |
-| `max_process_size` / `min_process_size` | 2200 / 400 | A pontos (2. köri) feldolgozás méret-korlátai |
-| `default_language` | `hu` | A `--lang` kapcsoló nélküli alapértelmezett nyelv — **nem feature-matching finomhangolás**, hanem a CLI/i18n rendszeré (lásd [Nyelv](#nyelv)); a `--profile`-ok nem írhatják felül |
+| `min_good_matches` | 200 | Minimum "good" matches before geometric verification (RANSAC) |
+| `min_inliers` | 220 | Minimum RANSAC inliers for final acceptance |
+| `min_inlier_ratio` | 0.93 | Minimum inlier / good-match ratio |
+| `score_uncertain` | 0.97 | The actual acceptance score threshold |
+| `score_accept` | 0.75 | Above this, don't try a lower-priority detector |
+| `early_accept_score` | 1.00 | Above this (on a successful match), skip trying the remaining detectors |
+| `ratio_test_sift` / `ratio_test_bin` | 0.60 / 0.65 | Lowe ratio test threshold (float vs. binary descriptors) |
+| `cache_long_side` | 1600 | Longer side of the stage-1 (fast) cache images, in pixels |
+| `stage1_top_k` | 8 | How many candidates go from stage 1 to stage 2 |
+| `stage1_min_good_matches` | 8 | **Technical minimum only** in stage 1 — NOT an exclusionary threshold |
+| `use_clahe` | true | Adaptive contrast equalization before feature detection |
+| `use_homography_check` | true | "Magnet image" protection (see above) |
+| `detector_priority` | `[SIFT, AKAZE, ORB, BRISK]` | Stage-2 detector order |
+| `max_process_size` / `min_process_size` | 2200 / 400 | Size limits for precise (stage-2) processing |
+| `default_language` | `hu` | The default language when `--lang` isn't passed — **not a feature-matching tunable**, it's a CLI/i18n setting (see [Language](#language)); profiles can't override it |
 
-A teljes lista, minden kommenttel: lásd közvetlenül az
-[image_matcher/data/config.yaml](image_matcher/data/config.yaml) fájlt.
+The full list, with all comments, is in
+[image_matcher/data/config.yaml](image_matcher/data/config.yaml).
 
-### Profilok
+### Profiles
 
-A `profiles/` mappában, fájlonként egy profil — a fájlnév (kiterjesztés nélkül)
-adja a profil nevét. Egy profil-fájl **csak azokat a kulcsokat** tartalmazza, amiket
-a `config.yaml`-hoz képest felülír (nem kell duplikálni mindent), plusz egy opcionális
-`description:` mezőt a `--list-profiles` kimenethez.
+Each file under `profiles/` is one profile — the filename (without extension) is the
+profile's name. A profile file only lists the keys it **overrides** relative to
+`config.yaml` (no need to duplicate everything), plus an optional `description:` field
+used in the `--list-profiles` output.
 
-| Profil | Mikor használd |
+| Profile | When to use it |
 |---|---|
-| `balanced` | **Alapértelmezett választás.** Szigorú küszöbök — egy valós teszt-halmazon 0 hibás találatot (100% pontosság) mértünk vele. Megegyezik a `config.yaml` gyári értékeivel. |
-| `high_recall` | Ha a cél a minél kevesebb kihagyott (false negative) találat, és elfogadható a nagyobb hibás-találat kockázat. **Nem lett formálisan összevetve a pontossággal** — éles használat előtt érdemes ellenőrizni a `results_candidates.csv`-vel a saját adathalmazodon. |
-| `diagnostic` | **Nem éles használatra.** Nagyon laza küszöbök + az early-accept ki van kapcsolva (minden elérhető detektor mindig lefut minden jelöltre) — a lehető legrészletesebb `results_candidates.csv` naplót adja küszöb-finomhangoláshoz. |
+| `balanced` | **The default choice.** Strict thresholds — measured at 0 false matches (100% precision) on a real test set. Matches `config.yaml`'s factory values. |
+| `high_recall` | When the goal is minimizing missed (false negative) matches, and a higher false-match risk is acceptable. **Not formally benchmarked against precision** — worth validating against `results_candidates.csv` on your own dataset before production use. |
+| `diagnostic` | **Not for production use.** Very loose thresholds + early-accept disabled (every available detector always runs against every candidate) — gives the most detailed possible `results_candidates.csv` log for threshold tuning. |
 
-Saját profil létrehozása: hozz létre egy `profiles/sajat_profil.yaml` fájlt a
-munkakönyvtáradban (vagy a `~/.image_matcher/profiles/` mappában), amiben csak a
-felülírni kívánt kulcsokat sorold fel, majd `--profile sajat_profil`.
+To create your own profile: create a `profiles/my_profile.yaml` file in your working
+directory (or in `~/.image_matcher/profiles/`), listing only the keys you want to
+override, then use `--profile my_profile`.
 
 ---
 
-## Kimenetek
+## Outputs
 
-### `results.csv` — referenciánkénti összegzés
+### `results.csv` — per-reference summary
 
-| Oszlop | Jelentés |
+| Column | Meaning |
 |---|---|
-| `Reference` | A referencia fájl neve |
-| `MatchedFile` / `SavedAs` | A megtalált forrásfájl neve / a `found/`-ba mentett fájl neve (`NOT_FOUND` / `SKIPPED_ALREADY_IN_FOUND`, ha nincs találat / már megvolt) |
-| `GoodMatches` / `Inliers` / `Score` | A győztes jelölt mérőszámai |
-| `NearMissFile` / `NearMissGood` / `NearMissInliers` / `NearMissScore` | NOT_FOUND esetén: a legjobb (de küszöb alatti) jelölt — diagnosztikához |
-| `Stage1Diag` | Diagnosztikai szöveg, ha már az 1. körben nem volt jelölt |
-| `Stage1Candidates` | Hány jelölt ment tovább az 1. körből |
-| `WinningDetector` | Melyik detektor találta meg (SIFT/AKAZE/ORB/BRISK) |
-| `DecisionReason` | Tömör, gépileg szűrhető kategória — lásd lent |
-| `RejectReason` | Részletes, szöveges bukási ok |
+| `Reference` | The reference file's name |
+| `MatchedFile` / `SavedAs` | The matched source file's name / the name it was saved as in `found/` (`NOT_FOUND` / `SKIPPED_ALREADY_IN_FOUND` if there's no match / it already existed) |
+| `GoodMatches` / `Inliers` / `Score` | The winning candidate's metrics |
+| `NearMissFile` / `NearMissGood` / `NearMissInliers` / `NearMissScore` | On NOT_FOUND: the best (but below-threshold) candidate — for diagnostics |
+| `Stage1Diag` | Diagnostic text, if stage 1 already found no candidates |
+| `Stage1Candidates` | How many candidates advanced from stage 1 |
+| `WinningDetector` | Which detector found the match (SIFT/AKAZE/ORB/BRISK) |
+| `DecisionReason` | Compact, machine-filterable category — see below |
+| `RejectReason` | Detailed, textual failure reason |
 
-### `results_candidates.csv` — jelölt×detektor-szintű részletes napló
+### `results_candidates.csv` — detailed candidate×detector log
 
-A 2. körben ténylegesen kipróbált **minden** (jelölt, detektor) kombináció saját
-sorban: `Stage1Rank`, `Stage1Score`, `GoodMatches`, `Inliers`, `InlierRatio`,
-`Stage2Score`, `Success`, `IsWinner`, `DecisionReason`, `RejectReason`. Ez a fő eszköz
-a küszöbök finomhangolásához — innen látszik pontosan, melyik jelölt melyik konkrét
-kapunál (good_matches / inliers / inlier_ratio / score / homográfia-plauzibilitás)
-bukott el.
+**Every** (candidate, detector) combination actually tried in stage 2 gets its own
+row: `Stage1Rank`, `Stage1Score`, `GoodMatches`, `Inliers`, `InlierRatio`,
+`Stage2Score`, `Success`, `IsWinner`, `DecisionReason`, `RejectReason`. This is the
+primary tool for threshold tuning — it shows exactly which candidate failed at which
+specific gate (good_matches / inliers / inlier_ratio / score / homography
+plausibility).
 
-### `DecisionReason` kategóriák
+### `DecisionReason` categories
 
-| Kategória | Jelentés |
+| Category | Meaning |
 |---|---|
-| `ACCEPT_STRONG_GEOMETRY` | Elfogadva, magas (`decision_strong_ratio` feletti) inlier-aránnyal |
-| `ACCEPT_INLIER` | Elfogadva, de szerényebb inlier-arány mellett |
-| `REJECT_NO_INLIERS` | Nem volt elég good match / a RANSAC nem talált homográfiát |
-| `REJECT_SCALE` | Homográfia-plauzibilitás elutasítás: irreális skálázás |
-| `REJECT_HOMOGRAPHY` | Homográfia-plauzibilitás elutasítás: tükrözés / extrém nyírás |
-| `REJECT_INLIER_RATIO` | Az inlier-szám vagy -arány a küszöb alatt |
-| `REJECT_SCORE` | Az összesített score a küszöb alatt |
+| `ACCEPT_STRONG_GEOMETRY` | Accepted, with a high inlier ratio (above `decision_strong_ratio`) |
+| `ACCEPT_INLIER` | Accepted, but with a more modest inlier ratio |
+| `REJECT_NO_INLIERS` | Not enough good matches / RANSAC found no homography |
+| `REJECT_SCALE` | Homography plausibility rejection: unrealistic scaling |
+| `REJECT_HOMOGRAPHY` | Homography plausibility rejection: mirroring / extreme shear |
+| `REJECT_INLIER_RATIO` | Inlier count or ratio below threshold |
+| `REJECT_SCORE` | Combined score below threshold |
 
 ---
 
-## Cache-rendszer
+## Cache system
 
-Két, egymástól független cache réteg van:
+There are two independent cache layers:
 
-1. **Kép-cache** (`<cache>/reference/<méret>/` és `<cache>/source/<méret>/`) — a
-   leskálázott, szürkeárnyalatos, 8-bit JPEG képek az 1. körhöz. Inkrementális: a
-   már meglévő fájlokat nem generálja újra.
-2. **Descriptor cache** (`<cache>/descriptors/`) — a kiszámolt feature-leírók
-   lemezre mentve, hogy **ismételt futtatásoknál** (pl. küszöb-hangolásnál) ne kelljen
-   újraszámolni a drága feature-detektálást.
+1. **Image cache** (`<cache>/reference/<size>/` and `<cache>/source/<size>/`) — the
+   downscaled, grayscale, 8-bit JPEG images for stage 1. Incremental: existing files
+   aren't regenerated.
+2. **Descriptor cache** (`<cache>/descriptors/`) — computed feature descriptors saved
+   to disk, so **repeated runs** (e.g. while tuning thresholds) don't need to redo the
+   expensive feature detection.
 
-A descriptor cache kulcsa tartalmazza a feldolgozási beállítások (CLAHE, detektor-
-paraméterek, feldolgozási méret) hash-ét ("fingerprint") is — ha ezek közül bármelyik
-megváltozik (pl. profilváltás miatt), a cache automatikusan érvénytelenné válik, **nem**
-ad hallgatólagosan elavult eredményt.
+The descriptor cache key includes a hash ("fingerprint") of the processing settings
+(CLAHE, detector parameters, processing size) — if any of these change (e.g. due to a
+profile switch), the cache is automatically invalidated and will **not** silently
+return stale results.
 
-- `--rebuild-cache` — mindkét réteget kényszerítve újragenerálja, utána továbbra is ír cache-t.
-- `--no-cache` — egyik réteget sem használja perzisztensen; a kép-cache egy ideiglenes
-  mappában épül fel (mert a kétlépcsős algoritmus szerkezetileg igényli), amit a
-  program a futás végén töröl.
+- `--rebuild-cache` — force-regenerates both layers, then continues writing cache as
+  normal.
+- `--no-cache` — neither layer is used persistently; the image cache is built in a
+  temporary directory (required by the two-stage algorithm's structure), which the
+  program deletes at the end of the run.
 
 ---
 
-## Tesztelés
+## Testing
 
-A projekt `unittest`-alapú smoke- és integrációs teszteket tartalmaz (`tests/`),
-pytest nélkül futtathatók:
+The project includes `unittest`-based smoke and integration tests (`tests/`),
+runnable without pytest:
 
 ```bash
 python -m unittest discover -s tests -t .
 ```
 
-Amit lefednek: profil-precedencia, homográfia-plauzibilitás (tükrözés/nyírás/skálázás
-elutasítása), CLAHE kontraszt-hatás, descriptor cache lemezes hit/miss és
-fingerprint-invalidáció, inkrementális kép-cache építés, és egy **végponttól-végpontig
-teszt**: egy szintetikus, texturált kép kivágata a `balanced` profil szigorú
-küszöbeivel helyesen megtalálja az eredeti forrást több jelölt közül, illetve
-NOT_FOUND-ot ad, ha csak "idegen" jelöltek vannak.
+Coverage includes: profile precedence, homography plausibility (rejecting
+mirroring/extreme shear/unrealistic scaling), CLAHE contrast effect, descriptor cache
+disk hit/miss and fingerprint invalidation, incremental image cache building, config
+discovery precedence, and an **end-to-end test**: a synthetic, textured image crop
+correctly finds its original source among several candidates under the `balanced`
+profile's strict thresholds, and correctly returns NOT_FOUND when only "unrelated"
+candidates are present.
 
 ---
 
-## Hibaelhárítás
+## Troubleshooting
 
-**`[FIGYELMEZTETÉS] AKAZE/BRISK nem elérhető ebben az OpenCV buildben`** — a
-telepített OpenCV build nem tartalmazza ezeket az algoritmusokat (előfordulhat még
-`opencv-contrib-python` mellett is, build-től függően). A program figyelmeztetéssel
-jelzi, és a maradék elérhető detektorokkal fut tovább — ez nem hiba, csak
-környezetfüggő korlát.
+**`[FIGYELMEZTETÉS] AKAZE/BRISK nem elérhető ebben az OpenCV buildben`** ("AKAZE/BRISK
+not available in this OpenCV build") — the installed OpenCV build doesn't include
+these algorithms (can happen even alongside `opencv-contrib-python`, depending on the
+specific build). The tool reports this with a warning and continues with whichever
+detectors are available — this isn't an error, just an environment-dependent
+limitation.
 
-**Ékezetes (pl. `Céges képek`) mappanevek Windows-on** — az `image_io.py`
-Unicode-biztos betöltést használ (`np.fromfile` + `cv2.imdecode`, Pillow fallback-kel),
-ez nem igényel külön beállítást.
+**Accented/special-character directory names on Windows** — `image_io.py` uses
+Unicode-safe loading (`np.fromfile` + `cv2.imdecode`, with a Pillow fallback), so this
+requires no special configuration.
 
-**Egy referenciára `NEM TALÁLHATÓ`, pedig szerinted meg kellene lennie** — nézd meg a
-`results_candidates.csv`-t: minden ténylegesen kipróbált jelöltre megtalálod a pontos
-bukási okot (`RejectReason` / `DecisionReason`). Ha sok jelölt `REJECT_INLIER_RATIO`
-vagy `REJECT_SCORE` közelében bukik el, érdemes lehet kipróbálni a `high_recall`
-profilt, vagy a `diagnostic` profillal részletesebb naplót gyűjteni.
+**A reference comes back `NEM TALÁLHATÓ` ("NOT FOUND") when you think it shouldn't**
+— check `results_candidates.csv`: for every candidate actually tried, you'll find the
+exact failure reason (`RejectReason` / `DecisionReason`). If many candidates fail near
+`REJECT_INLIER_RATIO` or `REJECT_SCORE`, it may be worth trying the `high_recall`
+profile, or gathering a more detailed log with the `diagnostic` profile.
 
-**Lassú futás nagyon nagy forráskészleten** — növeld a `--workers` értéket a fizikai
-CPU-magok számáig (ennél többnek nincs értelme), és/vagy csökkentsd a `--top-k`
-értékét (kevesebb jelölt megy a drága 2. körbe).
+**Slow runs on very large source sets** — increase `--workers` up to your physical CPU
+core count (beyond that it won't help), and/or lower `--top-k` (fewer candidates go
+into the expensive stage 2).
 
 ---
 
-## Licenc
+## License
 
-MIT — lásd a [LICENSE](LICENSE) fájlt. Szabadon használható, módosítható és
-terjeszthető, kereskedelmi célra is.
+MIT — see the [LICENSE](LICENSE) file. Free to use, modify, and redistribute,
+including for commercial purposes.
