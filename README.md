@@ -180,6 +180,8 @@ python run.py --list-profiles
 
 ## GUI
 
+![Demo: the Tkinter GUI running a search and finding the match](gui_demo.gif)
+
 The CLI flags (language, profile, paths, `--limit`/`--workers`/`--top-k`,
 `--no-cache`/`--rebuild-cache`/`--dry-run`) are also available through a
 Tkinter GUI — no extra dependency needed (Tkinter ships with the Python

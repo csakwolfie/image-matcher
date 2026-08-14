@@ -173,6 +173,8 @@ python run.py --list-profiles
 
 ## GUI
 
+![Demo: a Tkinter GUI keresés közben, ahogy megtalálja a találatot](gui_demo.gif)
+
 A CLI-kapcsolók (nyelv, profil, útvonalak, `--limit`/`--workers`/`--top-k`,
 `--no-cache`/`--rebuild-cache`/`--dry-run`) egy Tkinter grafikus felületen
 is elérhetők — nincs hozzá extra függőség (a Tkinter a Python
