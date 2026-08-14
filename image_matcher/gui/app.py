@@ -23,7 +23,7 @@ from typing import Any, Dict, Optional
 from .. import __version__
 from ..config import get_default_language, list_profiles, set_default_language
 from ..i18n import init_translator, list_available_langs, t
-from ..main import FOUND_DIR_NAME, ReferenceResult
+from ..main import ReferenceResult
 from . import argv_builder, worker
 from .live_panel import LivePanel
 from .profile_editor import ProfileEditorWindow
@@ -338,25 +338,20 @@ class App:
         self.root.after(80, self._poll_queue)
 
     def _handle_reference_result(self, result: ReferenceResult) -> None:
-        """A `LivePanel` frissítése egy `main.ReferenceResult` eseményből –
-        a fájlnév -> `Path` feloldás itt, a GUI-ban történik (a widget
-        maga semmit nem tud a keresési mappákról), mert a `matched`
-        mezőt tartalmazó mappa a `status`-tól függ: "exists"-nél a
-        kimeneti `found/`-ban van (a mentéskor átnevezve), minden más
-        esetben a source-mappában, az eredeti fájlnévvel."""
+        """A `LivePanel` frissítése egy `main.ReferenceResult` eseményből.
+        `main.py` már a TELJES, feloldott `Path`-eket adja át
+        (`reference_path`/`matched_path`) – a referencia-/forrás-mappák
+        REKURZÍVAN (beágyazott almappákkal együtt) kerülnek felfedezésre,
+        ezért itt nem szabad a fájlnévből mappa+név összefűzéssel
+        visszaépíteni az útvonalat (az almappában lévő fájlokra ez
+        hibásan nem-létező útvonalat adna)."""
         if result.status == "processing":
-            ref_path = Path(self.reference_var.get()) / result.reference
-            self.live_panel.set_reference(ref_path if ref_path.is_file() else None)
+            ref_path = result.reference_path
+            self.live_panel.set_reference(ref_path if ref_path is not None and ref_path.is_file() else None)
             return
 
-        image_path: Optional[Path] = None
-        if result.matched is not None:
-            if result.status == "exists":
-                image_path = Path(self.output_var.get()) / FOUND_DIR_NAME / result.matched
-            else:
-                image_path = Path(self.source_var.get()) / result.matched
-            if not image_path.is_file():
-                image_path = None
+        image_path = result.matched_path if result.matched_path is not None and result.matched_path.is_file() \
+            else None
         self.live_panel.set_result(result.status, image_path)
 
     def _on_search_done(self, exit_code: int, error: Optional[BaseException]) -> None:

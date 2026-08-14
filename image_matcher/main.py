@@ -52,14 +52,18 @@ class ReferenceResult:
     még nincs eredmény) | "found" | "not_found" | "near_miss" |
     "exists" (korábbi futásból már megvolt) | "error".
 
-    `matched`: a `status`-tól függően más mappában keresendő fájlnév –
-    "found"/"near_miss"/"not_found" esetén a SOURCE mappában (az eredeti
-    fájlnév), "exists" esetén a FOUND mappában (a `main.py` a mentéskor
-    átnevezi a referencia tövére, lásd `_search()`), egyébként `None`.
+    `reference_path`/`matched_path`: a TELJES, már feloldott elérési út
+    (nem csak a fájlnév!) – a referencia-/forrás-mappák `list_images()`
+    (`preprocessing.py`) által REKURZÍVAN (beágyazott almappákkal együtt)
+    kerülnek felfedezésre, ezért egy puszta fájlnévből a GUI-ban nem
+    lehetne megbízhatóan visszaállítani a teljes útvonalat (a fájl akár
+    egy almappában is lehet) – ezért itt közvetlenül a `main.py` által
+    már megtalált, teljes `Path`-eket adjuk tovább.
     """
     reference: str
     status: str
-    matched: Optional[str] = None
+    reference_path: Optional[Path] = None
+    matched_path: Optional[Path] = None
     detector: Optional[str] = None
     good_matches: int = 0
     inliers: int = 0
@@ -487,7 +491,7 @@ def _search(args, cfg: Config, ref_dir: Path, src_dir: Path, found_dir: Path,
 
         ref_name = ref_path.name
         if on_result is not None:
-            on_result(ReferenceResult(reference=ref_name, status="processing"))
+            on_result(ReferenceResult(reference=ref_name, status="processing", reference_path=ref_path))
 
         try:
             already_found = list(found_dir.glob(glob.escape(ref_path.stem) + ".*"))
@@ -502,7 +506,7 @@ def _search(args, cfg: Config, ref_dir: Path, src_dir: Path, found_dir: Path,
                 })
                 if on_result is not None:
                     on_result(ReferenceResult(reference=ref_name, status="exists",
-                                               matched=already_found[0].name))
+                                               matched_path=already_found[0]))
                 bar.advance(found=True)
                 bar.refresh()
                 continue
@@ -607,7 +611,7 @@ def _search(args, cfg: Config, ref_dir: Path, src_dir: Path, found_dir: Path,
                 })
                 if on_result is not None:
                     on_result(ReferenceResult(
-                        reference=ref_name, status="found", matched=best_src.name,
+                        reference=ref_name, status="found", matched_path=best_src,
                         detector=info["detector"], good_matches=info["good_matches"],
                         inliers=info["inliers"], score=info["score"],
                     ))
@@ -618,11 +622,13 @@ def _search(args, cfg: Config, ref_dir: Path, src_dir: Path, found_dir: Path,
                 if info.get("src_path") is not None:
                     top_reject_reason = info.get("reject_reason", "")
                     top_decision_reason = info.get("decision_reason", "")
-                    top_name = info["src_path"].name
+                    top_path = info["src_path"]
+                    top_name = top_path.name
                     top_good, top_inliers, top_score = info["good_matches"], info["inliers"], info["score"]
                 elif near_miss["src_path"] is not None:
                     top_reject_reason = near_miss.get("reject_reason", "")
                     top_decision_reason = near_miss.get("decision_reason", "")
+                    top_path = near_miss["src_path"]
                     top_name = near_miss_name
                     top_good, top_inliers, top_score = (
                         near_miss["good_matches"], near_miss["inliers"], near_miss["score"],
@@ -630,7 +636,7 @@ def _search(args, cfg: Config, ref_dir: Path, src_dir: Path, found_dir: Path,
                 else:
                     top_reject_reason = t("main.no_common_point")
                     top_decision_reason = "REJECT_NO_INLIERS"
-                    top_name, top_good, top_inliers, top_score = "", 0, 0, 0.0
+                    top_path, top_name, top_good, top_inliers, top_score = None, "", 0, 0, 0.0
 
                 bar.clear()
                 is_near_miss = bool(top_name) and top_decision_reason in NEAR_MISS_DECISION_REASONS
@@ -653,7 +659,7 @@ def _search(args, cfg: Config, ref_dir: Path, src_dir: Path, found_dir: Path,
                 if on_result is not None:
                     on_result(ReferenceResult(
                         reference=ref_name, status="near_miss" if is_near_miss else "not_found",
-                        matched=top_name or None, good_matches=top_good,
+                        matched_path=top_path, good_matches=top_good,
                         inliers=top_inliers, score=top_score,
                     ))
                 bar.advance(found=False)

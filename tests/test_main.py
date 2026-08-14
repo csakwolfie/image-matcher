@@ -204,8 +204,11 @@ class OnResultCallbackTest(unittest.TestCase):
         self.assertIn(("ref1.png", "processing"), statuses)
         self.assertIn(("ref1.png", "found"), statuses)
 
+        processing_event = next(e for e in events if e.status == "processing")
+        self.assertEqual(processing_event.reference_path, self.ref_dir / "ref1.png")
+
         found_event = next(e for e in events if e.status == "found")
-        self.assertEqual(found_event.matched, "source1.png")
+        self.assertEqual(found_event.matched_path, self.src_dir / "source1.png")
         self.assertIsNotNone(found_event.detector)
         self.assertGreater(found_event.good_matches, 0)
         self.assertGreater(found_event.inliers, 0)
@@ -241,13 +244,44 @@ class OnResultCallbackTest(unittest.TestCase):
 
         exists_event = next(e for e in second_events if e.status == "exists")
         self.assertEqual(exists_event.reference, "ref1.png")
-        self.assertEqual(exists_event.matched, "ref1.png")  # a found/-ban a referencia tövére átnevezve
+        # a found/-ban a referencia tövére átnevezve (más kiterjesztéssel is végződhetne,
+        # itt png-png, mert a szintetikus forrás is .png-ként lett elmentve)
+        self.assertEqual(exists_event.matched_path, self.output_dir / "found" / "ref1.png")
 
     def test_on_result_none_by_default_does_not_error(self):
         cv2.imwrite(str(self.src_dir / "source1.png"), _make_textured_image(seed=1))
         cv2.imwrite(str(self.ref_dir / "ref1.png"), _make_textured_image(seed=99))
         exit_code = main(self._argv())
         self.assertEqual(exit_code, 0)
+
+    def test_found_case_with_nested_subfolders_reports_correct_full_paths(self):
+        """Regressziós teszt: `preprocessing.list_images()` REKURZÍVAN
+        (almappákkal együtt) fedezi fel a képeket – a `matched_path`/
+        `reference_path` mezőknek a TELJES, a mappa-mélységet is
+        tartalmazó útvonalat kell adniuk, nem csak a puszta fájlnevet
+        (amiből a GUI korábban tévesen `forrás_mappa/fájlnév`-et épített
+        vissza, ami egy almappában lévő fájlra sosem létező útvonalra
+        mutatott)."""
+        true_source = _make_textured_image(seed=1)
+        nested_src_dir = self.src_dir / "album" / "2026"
+        nested_src_dir.mkdir(parents=True)
+        cv2.imwrite(str(nested_src_dir / "source1.png"), true_source)
+
+        nested_ref_dir = self.ref_dir / "crops"
+        nested_ref_dir.mkdir(parents=True)
+        cv2.imwrite(str(nested_ref_dir / "ref1.png"), true_source[250:950, 250:950])
+
+        events = []
+        exit_code = main(self._argv(), on_result=events.append)
+        self.assertEqual(exit_code, 0)
+
+        processing_event = next(e for e in events if e.status == "processing")
+        self.assertEqual(processing_event.reference_path, nested_ref_dir / "ref1.png")
+        self.assertTrue(processing_event.reference_path.is_file())
+
+        found_event = next(e for e in events if e.status == "found")
+        self.assertEqual(found_event.matched_path, nested_src_dir / "source1.png")
+        self.assertTrue(found_event.matched_path.is_file())
 
 
 if __name__ == "__main__":
