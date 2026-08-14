@@ -6,11 +6,19 @@
 
 🇭🇺 Magyar | 🇬🇧 [English](README.md)
 
+![Demo: egy körbevágott referenciakép 3 forrásképpel összevetve, helyesen megtalálva az eredetit](demo.gif)
+
 Klasszikus (nem neurális) OpenCV feature-matching alapú képkereső: adott **referencia**
 (körbevágott) képekhez megkeresi a hozzájuk tartozó **eredeti, teljes** képet egy nagy
 forrásmappában. SIFT / AKAZE / ORB / BRISK detektorokat és RANSAC-homográfiát használ,
 kétlépcsős (gyors előszűrés + pontos ellenőrzés) stratégiával, hogy nagy (több ezer
 képes) forráskészleteken is kezelhető idő alatt fusson.
+
+**Nincs neurális háló, nincs GPU, nincs `torch`.** Tisztán klasszikus
+számítógépes látás (keypoint-detektálás + RANSAC geometriai ellenőrzés) —
+determinisztikus, teljesen magyarázható találatok (minden eredményhez
+konkrét `good_matches`/`inliers`/`score` szám tartozik), és egy `pip
+install`, ami másodpercek alatt lefut egy tisztán CPU-s gépen is.
 
 > Verzió: **1.0.0**. A fejlesztés részletes története a [DEVLOG.md](DEVLOG.md)-ben.
 > Ingyenes, MIT licenc alatt ([LICENSE](LICENSE)) — szabadon használható, módosítható,

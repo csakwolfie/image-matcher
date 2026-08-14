@@ -6,11 +6,19 @@
 
 🇬🇧 English | 🇭🇺 [Magyar](README.hu.md)
 
+![Demo: a cropped reference image is matched against 3 source images, correctly identifying the original](demo.gif)
+
 A classical (non-neural) OpenCV feature-matching image search tool: given a set of
 **reference** (cropped) images, it finds the corresponding **original, full** image in
 a large source folder. It uses SIFT / AKAZE / ORB / BRISK detectors and RANSAC
 homography, with a two-stage (fast pre-filter + precise verification) strategy so it
 stays practical even on large (multi-thousand image) source sets.
+
+**No neural network, no GPU, no `torch`.** Just classical computer vision
+(keypoint detection + RANSAC geometric verification) — deterministic, fully
+explainable matches (every result comes with concrete `good_matches`/
+`inliers`/`score` numbers), and a `pip install` that's done in seconds on a
+CPU-only machine.
 
 > Version: **1.0.0**. Full development history in [DEVLOG.md](DEVLOG.md) (Hungarian
 > only — see note below). Free and open source under the MIT license
