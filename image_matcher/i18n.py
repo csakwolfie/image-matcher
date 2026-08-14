@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Optional
 
 from .paths import PACKAGED_DATA_DIR, USER_CONFIG_DIR, first_existing
 
-DEFAULT_LANG = "hu"
+DEFAULT_LANG = "en"
 
 
 def resolve_lang_dir(explicit: Optional[Path] = None) -> Path:

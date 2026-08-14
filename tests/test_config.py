@@ -168,22 +168,22 @@ class DefaultLanguageTest(unittest.TestCase):
         self.tmpdir.cleanup()
 
     def test_get_default_language_from_packaged_default(self):
-        self.assertEqual(get_default_language(), "hu")
+        self.assertEqual(get_default_language(), "en")
 
     def test_get_default_language_falls_back_when_key_missing(self):
         (self.cwd_dir / "config.yaml").write_text(
             (config_module.PACKAGED_DATA_DIR / "config.yaml").read_text(encoding="utf-8")
-            .replace("default_language: hu\n", ""),
+            .replace("default_language: en\n", ""),
             encoding="utf-8",
         )
         self.assertNotIn("default_language",
                           (self.cwd_dir / "config.yaml").read_text(encoding="utf-8"))
-        self.assertEqual(get_default_language(), "hu")  # i18n.DEFAULT_LANG fallback
+        self.assertEqual(get_default_language(), "en")  # i18n.DEFAULT_LANG fallback
 
     def test_set_default_language_creates_full_copy_when_no_override_exists(self):
-        saved_path = set_default_language("en")
+        saved_path = set_default_language("hu")
         self.assertEqual(saved_path, self.user_dir / "config.yaml")
-        self.assertEqual(get_default_language(), "en")
+        self.assertEqual(get_default_language(), "hu")
         # Kritikus regressziós ellenőrzés: a mentés utáni fájl TELJES,
         # érvényes config.yaml marad – egy éles futtatás nem törik el
         # "hiányzó kulcsok" hibával.
@@ -198,10 +198,10 @@ class DefaultLanguageTest(unittest.TestCase):
             .replace("min_good_matches: 200", "min_good_matches: 111"),
             encoding="utf-8",
         )
-        saved_path = set_default_language("en")
+        saved_path = set_default_language("hu")
         self.assertEqual(saved_path, self.cwd_dir / "config.yaml")
         self.assertFalse((self.user_dir / "config.yaml").exists())
-        self.assertEqual(get_default_language(), "en")
+        self.assertEqual(get_default_language(), "hu")
         self.assertEqual(load_default_config().min_good_matches, 111)
 
     def test_set_default_language_updates_existing_user_override_in_place(self):
@@ -210,9 +210,9 @@ class DefaultLanguageTest(unittest.TestCase):
             .replace("min_good_matches: 200", "min_good_matches: 222"),
             encoding="utf-8",
         )
-        saved_path = set_default_language("en")
+        saved_path = set_default_language("hu")
         self.assertEqual(saved_path, self.user_dir / "config.yaml")
-        self.assertEqual(get_default_language(), "en")
+        self.assertEqual(get_default_language(), "hu")
         self.assertEqual(load_default_config().min_good_matches, 222)
 
 

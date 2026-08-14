@@ -19,7 +19,7 @@
 # önmagában (--reference/--source/--output/--list-profiles/--dry-run nélkül)
 # kiadva tartósan ELMENTI az itt szereplő értéket az éppen érvényes
 # config.yaml-ba (lásd README "Nyelv" szakasz).
-default_language: hu
+default_language: en
 
 # -----------------------------------------------------------------------
 # Kép-előfeldolgozás (feature-detektálás előtti skálázás + kontraszt)

@@ -61,9 +61,9 @@ class BareLangSetsDefaultTest(unittest.TestCase):
     def test_lang_with_list_profiles_does_not_persist(self):
         # --lang egy VALÓDI művelet (--list-profiles) mellett csak az adott
         # futtatásra vonatkozik, nem menti el tartós alapértelmezettként.
-        exit_code = main(["--lang", "en", "--list-profiles"])
+        exit_code = main(["--lang", "hu", "--list-profiles"])
         self.assertEqual(exit_code, 0)
-        self.assertEqual(get_default_language(), "hu")
+        self.assertEqual(get_default_language(), "en")
         self.assertFalse((self.user_dir / "config.yaml").exists())
 
     def test_missing_required_args_error_unaffected_without_lang(self):
