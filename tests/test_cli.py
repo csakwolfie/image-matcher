@@ -1,7 +1,11 @@
 import io
+import os
+import tempfile
 import unittest
 from contextlib import redirect_stdout
+from pathlib import Path
 
+from image_matcher import config as config_module
 from image_matcher import i18n as i18n_module
 from image_matcher.cli import parse_args
 from image_matcher.i18n import t
@@ -14,19 +18,33 @@ class LangFlagTest(unittest.TestCase):
     a build_parser() hívás előtt be kell állnia – ezt teszteljük itt azzal,
     hogy parse_args() után egy tetszőleges t() hívás a kért nyelven felel.
     Minden teszt visszaállítja a singletont, hogy ne szennyezze a többi
-    tesztet (lásd tests/test_i18n.py azonos mintáját).
+    tesztet (lásd tests/test_i18n.py azonos mintáját). cwd/USER_CONFIG_DIR-t
+    is tmpdir-re patcheljük (lásd test_config.py DefaultLanguageTest-jét),
+    mert `parse_args([])` a nyelv nélkül `get_default_language()`-re esik
+    vissza, ami a VALÓDI ~/.image_matcher/config.yaml-t olvasná – enélkül a
+    teszt eredménye a futtató gép helyi állapotától függene, nem a
+    csomagolt alapértéktől.
     """
 
     def setUp(self):
         self.original_translator = i18n_module._translator
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmpdir.name)
+        self.original_cwd = Path.cwd()
+        self.original_user_config_dir = config_module.USER_CONFIG_DIR
+        os.chdir(self.root)
+        config_module.USER_CONFIG_DIR = self.root / "user"
 
     def tearDown(self):
         i18n_module._translator = self.original_translator
+        os.chdir(self.original_cwd)
+        config_module.USER_CONFIG_DIR = self.original_user_config_dir
+        self.tmpdir.cleanup()
 
-    def test_default_lang_is_hungarian(self):
+    def test_default_lang_is_english(self):
         parse_args([])
         self.assertEqual(t("main.no_profiles"),
-                          "Nincs elérhető profil a profiles/ mappában.")
+                          "No profiles available in the profiles/ folder.")
 
     def test_lang_en_switches_translator(self):
         parse_args(["--lang", "en"])
