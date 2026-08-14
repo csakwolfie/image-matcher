@@ -6,7 +6,7 @@
 
 🇬🇧 English | 🇭🇺 [Magyar](README.hu.md)
 
-![Demo: a cropped reference image is matched against 3 source images, correctly identifying the original](demo.gif)
+![Demo: the Tkinter GUI running a search and finding the match](gui_demo.gif)
 
 A classical (non-neural) OpenCV feature-matching image search tool: given a set of
 **reference** (cropped) images, it finds the corresponding **original, full** image in
@@ -179,8 +179,6 @@ python run.py --list-profiles
 ---
 
 ## GUI
-
-![Demo: the Tkinter GUI running a search and finding the match](gui_demo.gif)
 
 The CLI flags (language, profile, paths, `--limit`/`--workers`/`--top-k`,
 `--no-cache`/`--rebuild-cache`/`--dry-run`) are also available through a

@@ -6,7 +6,7 @@
 
 🇭🇺 Magyar | 🇬🇧 [English](README.md)
 
-![Demo: egy körbevágott referenciakép 3 forrásképpel összevetve, helyesen megtalálva az eredetit](demo.gif)
+![Demo: a Tkinter GUI keresés közben, ahogy megtalálja a találatot](gui_demo.gif)
 
 Klasszikus (nem neurális) OpenCV feature-matching alapú képkereső: adott **referencia**
 (körbevágott) képekhez megkeresi a hozzájuk tartozó **eredeti, teljes** képet egy nagy
@@ -172,8 +172,6 @@ python run.py --list-profiles
 ---
 
 ## GUI
-
-![Demo: a Tkinter GUI keresés közben, ahogy megtalálja a találatot](gui_demo.gif)
 
 A CLI-kapcsolók (nyelv, profil, útvonalak, `--limit`/`--workers`/`--top-k`,
 `--no-cache`/`--rebuild-cache`/`--dry-run`) egy Tkinter grafikus felületen
