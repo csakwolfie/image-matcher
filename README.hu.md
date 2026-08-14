@@ -119,6 +119,14 @@ pip install -r requirements.txt
 > hiányoznak, a program figyelmeztetéssel jelzi, és a maradék elérhető detektorokkal
 > fut tovább (lásd [Hibaelhárítás](#hibaelhárítás)).
 
+> **Minimál/headless Linux szervereken** (pl. Docker alapimage-eken, desktop
+> környezet nélküli gépeken) az `opencv-contrib-python` importálás közben
+> `libGL.so.1` hiányára panaszkodhat, mert egy ott nem telepített grafikus
+> könyvtárhoz linkel. Vagy telepítsd a rendszer-libet (Debian/Ubuntu: `sudo
+> apt install libgl1`), vagy cseréld a függőséget `opencv-contrib-python-
+> headless`-re, aminek nincs szüksége rá — csak akkor releváns, ha azon a
+> gépen a GUI-t nem is használod.
+
 ---
 
 ## Gyors kezdés
@@ -177,7 +185,9 @@ CLI-kapcsoló önmagában kiadva (lásd [Nyelv](#nyelv)).
 
 > Néhány Linux disztribúción a Tkinter nem alapból települ a Python
 > mellé — ott előtte telepítsd az OS-csomagot (pl. Debian/Ubuntu:
-> `sudo apt install python3-tk`).
+> `sudo apt install python3-tk`; Fedora: `sudo dnf install
+> python3-tkinter`). Ha csak a CLI-t (`image-matcher`) használod, erre
+> nincs szükség.
 
 ---
 

@@ -127,6 +127,13 @@ pip install -r requirements.txt
 > are still missing on your system, the tool reports it with a warning and continues
 > with whichever detectors are available (see [Troubleshooting](#troubleshooting)).
 
+> **Minimal/headless Linux servers** (e.g. Docker base images, machines without a
+> desktop environment): `opencv-contrib-python` may fail to import with a `libGL.so.1`
+> error, since it links against a graphics library that isn't installed on such
+> systems. Either install the system library (Debian/Ubuntu: `sudo apt install
+> libgl1`) or swap the dependency for `opencv-contrib-python-headless`, which doesn't
+> need it — only relevant if you're not also running the GUI on that machine.
+
 ---
 
 ## Quick start
@@ -183,8 +190,9 @@ next to the language dropdown does the same thing as passing `--lang
 <code>` on its own from the CLI (see [Language](#language)).
 
 > On some Linux distributions Tkinter isn't installed alongside Python by
-> default — install the OS package first (e.g. on Debian/Ubuntu:
-> `sudo apt install python3-tk`).
+> default — install the OS package first (e.g. Debian/Ubuntu:
+> `sudo apt install python3-tk`; Fedora: `sudo dnf install python3-tkinter`).
+> Not needed if you only use the CLI (`image-matcher`).
 
 ---
 
