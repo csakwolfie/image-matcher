@@ -10,9 +10,10 @@ import threading
 import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from . import __version__
 from .cache_disk import DescriptorCache
@@ -36,6 +37,36 @@ RESULTS_CSV_NAME = "results.csv"
 CANDIDATES_CSV_NAME = "results_candidates.csv"
 CACHE_SUBDIR_REF = "reference"
 CACHE_SUBDIR_SRC = "source"
+
+
+@dataclass(frozen=True)
+class ReferenceResult:
+    """
+    Egy referencia feldolgozásának strukturált eseménye – az `on_result`
+    callback (lásd `main()`) ezt adja át, MINDIG a főszálon biztonságosan
+    feldolgozható formában (a callback maga a keresési háttérszálon fut,
+    ezért NEM szabad belőle közvetlenül Tkinter-widgetet módosítani – lásd
+    `gui/worker.py`, ami ezt egy queue-ba teszi a `_poll_queue`-nak).
+
+    `status`: "processing" (a referencia feldolgozása épp elkezdődött,
+    még nincs eredmény) | "found" | "not_found" | "near_miss" |
+    "exists" (korábbi futásból már megvolt) | "error".
+
+    `matched`: a `status`-tól függően más mappában keresendő fájlnév –
+    "found"/"near_miss"/"not_found" esetén a SOURCE mappában (az eredeti
+    fájlnév), "exists" esetén a FOUND mappában (a `main.py` a mentéskor
+    átnevezi a referencia tövére, lásd `_search()`), egyébként `None`.
+    """
+    reference: str
+    status: str
+    matched: Optional[str] = None
+    detector: Optional[str] = None
+    good_matches: int = 0
+    inliers: int = 0
+    score: float = 0.0
+
+
+OnResultCallback = Callable[[ReferenceResult], None]
 
 
 class _Tee:
@@ -221,14 +252,17 @@ def _ensure_utf8_console() -> None:
 
 
 def main(argv=None, *, cancel_event: Optional[threading.Event] = None,
-         pause_event: Optional[threading.Event] = None) -> int:
+         pause_event: Optional[threading.Event] = None,
+         on_result: Optional[OnResultCallback] = None) -> int:
     """
-    `cancel_event`/`pause_event` opcionális, kulcsszavas-csak paraméterek –
-    a CLI (`cli.py`/`run.py`) sosem ad át ilyet (marad `None`), tehát a
-    parancssori viselkedés ettől függetlenül, bitre pontosan változatlan.
-    A GUI (`image_matcher/gui/worker.py`) adja át őket, hogy a Szünet/
-    Folytatás/Leállítás gombok a `_search()` per-referencia ciklusát
-    tudják vezérelni – lásd ott a pontos ellenőrzést.
+    `cancel_event`/`pause_event`/`on_result` opcionális, kulcsszavas-csak
+    paraméterek – a CLI (`cli.py`/`run.py`) sosem ad át ilyet (marad
+    `None`), tehát a parancssori viselkedés ettől függetlenül, bitre
+    pontosan változatlan. A GUI (`image_matcher/gui/worker.py`) adja át
+    őket: a Szünet/Folytatás/Leállítás gombok a `_search()` per-referencia
+    ciklusát tudják vezérelni (lásd ott a pontos ellenőrzést), az
+    `on_result` pedig referenciánként egy `ReferenceResult`-ot kap (lásd
+    ott), a GUI élő találat-panelje ebből épül fel.
     """
     _ensure_utf8_console()
     args = parse_args(argv)
@@ -288,7 +322,7 @@ def main(argv=None, *, cancel_event: Optional[threading.Event] = None,
     try:
         return _run(args, cfg, ref_dir, src_dir, output_dir, found_dir,
                      results_path, candidates_path, log_path,
-                     cancel_event=cancel_event, pause_event=pause_event)
+                     cancel_event=cancel_event, pause_event=pause_event, on_result=on_result)
     finally:
         sys.stdout = real_stdout
         log_file_handle.close()
@@ -297,7 +331,8 @@ def main(argv=None, *, cancel_event: Optional[threading.Event] = None,
 def _run(args, cfg: Config, ref_dir: Path, src_dir: Path, output_dir: Path,
           found_dir: Path, results_path: Path, candidates_path: Path, log_path: Path, *,
           cancel_event: Optional[threading.Event] = None,
-          pause_event: Optional[threading.Event] = None) -> int:
+          pause_event: Optional[threading.Event] = None,
+          on_result: Optional[OnResultCallback] = None) -> int:
     print("=" * 70)
     print("  High-Accuracy Classical OpenCV Image Matcher")
     print(t("main.banner_subtitle"))
@@ -334,7 +369,8 @@ def _run(args, cfg: Config, ref_dir: Path, src_dir: Path, output_dir: Path,
     try:
         return _search(args, cfg, ref_dir, src_dir, found_dir, results_path,
                         candidates_path, cache_root, ref_cache_root, src_cache_root,
-                        descriptor_persist_dir, cancel_event=cancel_event, pause_event=pause_event)
+                        descriptor_persist_dir, cancel_event=cancel_event, pause_event=pause_event,
+                        on_result=on_result)
     finally:
         if temp_cache_dir is not None:
             shutil.rmtree(temp_cache_dir, ignore_errors=True)
@@ -344,7 +380,8 @@ def _search(args, cfg: Config, ref_dir: Path, src_dir: Path, found_dir: Path,
              results_path: Path, candidates_path: Path, cache_root: Path,
              ref_cache_root: Path, src_cache_root: Path, descriptor_persist_dir, *,
              cancel_event: Optional[threading.Event] = None,
-             pause_event: Optional[threading.Event] = None) -> int:
+             pause_event: Optional[threading.Event] = None,
+             on_result: Optional[OnResultCallback] = None) -> int:
     max_workers = args.workers
 
     print(t("main.detectors_init"))
@@ -449,6 +486,8 @@ def _search(args, cfg: Config, ref_dir: Path, src_dir: Path, found_dir: Path,
             bar.refresh()
 
         ref_name = ref_path.name
+        if on_result is not None:
+            on_result(ReferenceResult(reference=ref_name, status="processing"))
 
         try:
             already_found = list(found_dir.glob(glob.escape(ref_path.stem) + ".*"))
@@ -461,6 +500,9 @@ def _search(args, cfg: Config, ref_dir: Path, src_dir: Path, found_dir: Path,
                     "saved_as": already_found[0].name,
                     "good_matches": 0, "inliers": 0, "score": 0.0, "skipped": True,
                 })
+                if on_result is not None:
+                    on_result(ReferenceResult(reference=ref_name, status="exists",
+                                               matched=already_found[0].name))
                 bar.advance(found=True)
                 bar.refresh()
                 continue
@@ -484,6 +526,8 @@ def _search(args, cfg: Config, ref_dir: Path, src_dir: Path, found_dir: Path,
                     "winning_detector": "", "decision_reason": "REJECT_NO_INLIERS",
                     "reject_reason": stage1_diag,
                 })
+                if on_result is not None:
+                    on_result(ReferenceResult(reference=ref_name, status="not_found"))
                 bar.advance(found=False)
                 bar.refresh()
                 continue
@@ -561,6 +605,12 @@ def _search(args, cfg: Config, ref_dir: Path, src_dir: Path, found_dir: Path,
                     "winning_detector": info["detector"], "reject_reason": "",
                     "decision_reason": info.get("decision_reason", ""),
                 })
+                if on_result is not None:
+                    on_result(ReferenceResult(
+                        reference=ref_name, status="found", matched=best_src.name,
+                        detector=info["detector"], good_matches=info["good_matches"],
+                        inliers=info["inliers"], score=info["score"],
+                    ))
                 bar.advance(found=True)
                 bar.refresh()
             else:
@@ -583,7 +633,8 @@ def _search(args, cfg: Config, ref_dir: Path, src_dir: Path, found_dir: Path,
                     top_name, top_good, top_inliers, top_score = "", 0, 0, 0.0
 
                 bar.clear()
-                if top_name and top_decision_reason in NEAR_MISS_DECISION_REASONS:
+                is_near_miss = bool(top_name) and top_decision_reason in NEAR_MISS_DECISION_REASONS
+                if is_near_miss:
                     _print_near_miss(idx, len(ref_files), ref_name, top_name,
                                       top_good, top_inliers, top_score, top_reject_reason)
                 else:
@@ -599,6 +650,12 @@ def _search(args, cfg: Config, ref_dir: Path, src_dir: Path, found_dir: Path,
                     "stage1_candidate_count": len(candidate_originals), "winning_detector": "",
                     "reject_reason": top_reject_reason, "decision_reason": top_decision_reason,
                 })
+                if on_result is not None:
+                    on_result(ReferenceResult(
+                        reference=ref_name, status="near_miss" if is_near_miss else "not_found",
+                        matched=top_name or None, good_matches=top_good,
+                        inliers=top_inliers, score=top_score,
+                    ))
                 bar.advance(found=False)
                 bar.refresh()
 
@@ -610,6 +667,8 @@ def _search(args, cfg: Config, ref_dir: Path, src_dir: Path, found_dir: Path,
                 "reference": ref_name, "matched": None,
                 "good_matches": 0, "inliers": 0, "score": 0.0,
             })
+            if on_result is not None:
+                on_result(ReferenceResult(reference=ref_name, status="error"))
             bar.advance(found=False)
             bar.refresh()
 

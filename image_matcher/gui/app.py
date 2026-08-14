@@ -16,13 +16,16 @@ import queue
 import re
 import threading
 import tkinter as tk
+from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 from typing import Any, Dict, Optional
 
 from .. import __version__
 from ..config import get_default_language, list_profiles, set_default_language
 from ..i18n import init_translator, list_available_langs, t
+from ..main import FOUND_DIR_NAME, ReferenceResult
 from . import argv_builder, worker
+from .live_panel import LivePanel
 from .profile_editor import ProfileEditorWindow
 
 _PROGRESS_RE = re.compile(r"\[(\d+)/(\d+)\]")
@@ -53,12 +56,17 @@ class App:
 
     def _build_widgets(self) -> None:
         root = self.root
-        root.geometry("720x640")
+        root.geometry("760x870")
         main = ttk.Frame(root, padding=10)
         main.pack(fill="both", expand=True)
         main.columnconfigure(1, weight=1)
 
         row = 0
+
+        # --- Élő találat-panel ---
+        self.live_panel = LivePanel(main)
+        self.live_panel.grid(row=row, column=0, columnspan=3, sticky="ew", pady=(0, 8))
+        row += 1
 
         # --- Nyelv ---
         self.lang_group = ttk.LabelFrame(main)
@@ -203,6 +211,7 @@ class App:
 
     def _refresh_texts(self) -> None:
         self.root.title(t("gui.window_title"))
+        self.live_panel.refresh_texts()
         self.lang_group.config(text=t("gui.group_language"))
         self.lang_label.config(text=t("gui.label_language"))
         self.make_default_button.config(text=t("gui.button_make_default"))
@@ -290,6 +299,7 @@ class App:
         self._cancel_event = threading.Event()
         self._pause_event = threading.Event()
         self._set_running_state(True)
+        self.live_panel.reset()
         self._append_log(f"\n$ image-matcher {' '.join(argv)}\n")
         self.progress_bar["value"] = 0
         self._handle = worker.run_search(argv, self._cancel_event, self._pause_event)
@@ -319,10 +329,35 @@ class App:
                 if isinstance(item, worker.Done):
                     self._on_search_done(item.exit_code, item.error)
                     return
+                if isinstance(item, ReferenceResult):
+                    self._handle_reference_result(item)
+                    continue
                 self._append_log(str(item))
         except queue.Empty:
             pass
         self.root.after(80, self._poll_queue)
+
+    def _handle_reference_result(self, result: ReferenceResult) -> None:
+        """A `LivePanel` frissítése egy `main.ReferenceResult` eseményből –
+        a fájlnév -> `Path` feloldás itt, a GUI-ban történik (a widget
+        maga semmit nem tud a keresési mappákról), mert a `matched`
+        mezőt tartalmazó mappa a `status`-tól függ: "exists"-nél a
+        kimeneti `found/`-ban van (a mentéskor átnevezve), minden más
+        esetben a source-mappában, az eredeti fájlnévvel."""
+        if result.status == "processing":
+            ref_path = Path(self.reference_var.get()) / result.reference
+            self.live_panel.set_reference(ref_path if ref_path.is_file() else None)
+            return
+
+        image_path: Optional[Path] = None
+        if result.matched is not None:
+            if result.status == "exists":
+                image_path = Path(self.output_var.get()) / FOUND_DIR_NAME / result.matched
+            else:
+                image_path = Path(self.source_var.get()) / result.matched
+            if not image_path.is_file():
+                image_path = None
+        self.live_panel.set_result(result.status, image_path)
 
     def _on_search_done(self, exit_code: int, error: Optional[BaseException]) -> None:
         self._set_running_state(False)

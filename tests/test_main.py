@@ -11,7 +11,21 @@ import numpy as np
 from image_matcher import config as config_module
 from image_matcher import i18n as i18n_module
 from image_matcher.config import get_default_language
-from image_matcher.main import main
+from image_matcher.main import ReferenceResult, main
+
+
+def _make_textured_image(seed: int, size: int = 1200) -> np.ndarray:
+    """Kellően "dús" szintetikus textúra, hogy SIFT sok stabil keypointot
+    találjon (ugyanaz a minta, mint test_search_integration.py-ban)."""
+    rng = np.random.RandomState(seed)
+    noise = rng.randint(0, 255, (size, size), dtype=np.uint8)
+    img = cv2.GaussianBlur(noise, (0, 0), sigmaX=3)
+    for _ in range(60):
+        x, y = rng.randint(60, size - 60, size=2)
+        r = int(rng.randint(10, 45))
+        color = int(rng.randint(0, 255))
+        cv2.circle(img, (int(x), int(y)), r, color, -1)
+    return img
 
 
 class BareLangSetsDefaultTest(unittest.TestCase):
@@ -149,6 +163,91 @@ class CancelAndPauseTest(unittest.TestCase):
         results_csv = self.output_dir / "results.csv"
         lines = [l for l in results_csv.read_text(encoding="utf-8").splitlines() if l.strip()]
         self.assertEqual(len(lines), 1)  # a szünet alatt jött a cancel, 0 referencia dolgozódott fel
+
+
+class OnResultCallbackTest(unittest.TestCase):
+    """
+    Az `on_result` opcionális callback (lásd `main.ReferenceResult`) – a
+    GUI élő találat-panelje ebből épül fel (`gui/worker.py` egy queue-ba
+    teszi, `gui/app.py` a főszálon dolgozza fel). Itt közvetlenül
+    `main()`-t hívjuk egy szintetikus, kontrollált adathalmazon, hogy
+    minden `status` ág (processing/found/not_found/exists) legalább
+    egyszer ténylegesen lefusson és a megfelelő mezőkkel érkezzen.
+    """
+
+    def setUp(self):
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmpdir.name)
+        self.ref_dir = self.root / "ref"
+        self.src_dir = self.root / "src"
+        self.output_dir = self.root / "out"
+        self.ref_dir.mkdir()
+        self.src_dir.mkdir()
+
+    def tearDown(self):
+        self.tmpdir.cleanup()
+
+    def _argv(self):
+        return ["--reference", str(self.ref_dir), "--source", str(self.src_dir),
+                "--output", str(self.output_dir), "--workers", "2"]
+
+    def test_found_case_emits_processing_then_found_with_details(self):
+        true_source = _make_textured_image(seed=1)
+        cv2.imwrite(str(self.src_dir / "source1.png"), true_source)
+        cv2.imwrite(str(self.ref_dir / "ref1.png"), true_source[250:950, 250:950])
+
+        events = []
+        exit_code = main(self._argv(), on_result=events.append)
+
+        self.assertEqual(exit_code, 0)
+        statuses = [(e.reference, e.status) for e in events]
+        self.assertIn(("ref1.png", "processing"), statuses)
+        self.assertIn(("ref1.png", "found"), statuses)
+
+        found_event = next(e for e in events if e.status == "found")
+        self.assertEqual(found_event.matched, "source1.png")
+        self.assertIsNotNone(found_event.detector)
+        self.assertGreater(found_event.good_matches, 0)
+        self.assertGreater(found_event.inliers, 0)
+        self.assertGreater(found_event.score, 0.0)
+
+    def test_not_found_case_emits_processing_then_not_found(self):
+        cv2.imwrite(str(self.src_dir / "source1.png"), _make_textured_image(seed=1))
+        cv2.imwrite(str(self.ref_dir / "ref1.png"), _make_textured_image(seed=99))
+
+        events = []
+        exit_code = main(self._argv(), on_result=events.append)
+
+        self.assertEqual(exit_code, 0)
+        statuses = [(e.reference, e.status) for e in events]
+        self.assertIn(("ref1.png", "processing"), statuses)
+        self.assertIn(("ref1.png", "not_found"), statuses)
+
+        not_found_event = next(e for e in events if e.status == "not_found")
+        self.assertEqual(not_found_event.reference, "ref1.png")
+
+    def test_exists_case_on_second_run_reports_saved_filename(self):
+        true_source = _make_textured_image(seed=1)
+        cv2.imwrite(str(self.src_dir / "source1.png"), true_source)
+        cv2.imwrite(str(self.ref_dir / "ref1.png"), true_source[250:950, 250:950])
+
+        first_events = []
+        main(self._argv(), on_result=first_events.append)
+        self.assertTrue(any(e.status == "found" for e in first_events))
+
+        second_events = []
+        exit_code = main(self._argv(), on_result=second_events.append)
+        self.assertEqual(exit_code, 0)
+
+        exists_event = next(e for e in second_events if e.status == "exists")
+        self.assertEqual(exists_event.reference, "ref1.png")
+        self.assertEqual(exists_event.matched, "ref1.png")  # a found/-ban a referencia tövére átnevezve
+
+    def test_on_result_none_by_default_does_not_error(self):
+        cv2.imwrite(str(self.src_dir / "source1.png"), _make_textured_image(seed=1))
+        cv2.imwrite(str(self.ref_dir / "ref1.png"), _make_textured_image(seed=99))
+        exit_code = main(self._argv())
+        self.assertEqual(exit_code, 0)
 
 
 if __name__ == "__main__":

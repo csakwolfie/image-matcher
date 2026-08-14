@@ -83,9 +83,13 @@ def run_search(
     GUI-ból (ezt a Futtatás gomb widget-szinten is kikényszeríti).
 
     A visszaadott `SearchHandle.queue`-ba szöveges sorok (a `main.main()`
-    kimenete) és egy záró `Done`-sentinel kerül – a hívónak (`app.py`)
-    saját, `root.after`-alapú pollozással kell kiürítenie, Tkinter-widgetet
-    csak onnan szabad módosítani.
+    kimenete), `main.ReferenceResult` objektumok (az élő találat-panelhez,
+    lásd `app.py`/`live_panel.py`) és egy záró `Done`-sentinel kerül – a
+    hívónak (`app.py`) saját, `root.after`-alapú pollozással kell
+    kiürítenie, Tkinter-widgetet csak onnan szabad módosítani. A
+    `ReferenceResult` egyszerű, immutable dataclass – a queue-ba tétele
+    (a keresési háttérszálról) biztonságos, csak a FELDOLGOZÁSA (widget-
+    frissítés) van a főszálhoz kötve.
     """
     line_queue: "queue.Queue[object]" = queue.Queue()
 
@@ -95,7 +99,8 @@ def run_search(
         exit_code = 1
         error: Optional[BaseException] = None
         try:
-            exit_code = run_main(argv, cancel_event=cancel_event, pause_event=pause_event)
+            exit_code = run_main(argv, cancel_event=cancel_event, pause_event=pause_event,
+                                  on_result=line_queue.put)
         except BaseException as e:  # a háttérszál sose fagyassza le csendben a GUI-t
             error = e
             line_queue.put(f"[HIBA] {e}\n{traceback.format_exc()}")
